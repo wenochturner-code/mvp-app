@@ -385,6 +385,15 @@ st.caption(
     "purposes only and is not financial advice."
 )
 
+# ---------- Admin / debug panel ----------
+with st.expander("📊 Admin: View usage log"):
+    try:
+        df_log = pd.read_csv("events_log.csv", header=None, names=["timestamp", "event", "tickers"])
+        st.dataframe(df_log, use_container_width=True)
+    except FileNotFoundError:
+        st.caption("No log file found yet.")
+
+
 
 
 
