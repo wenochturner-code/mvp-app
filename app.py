@@ -11,7 +11,8 @@ if "results" not in st.session_state:
     st.session_state["results"] = None
 if "last_query" not in st.session_state:
     st.session_state["last_query"] = ""
-
+if "pending_query" not in st.session_state:
+    st.session_state["pending_query"] = ""
 
 # ---------- Small helper utilities ----------
 
@@ -199,7 +200,7 @@ def compute_signal_and_explanation(
     return signal, confidence, explanation, score
 
 
-# ---------- Analysis function (used by both initial + new search) ----------
+# ---------- Analysis function ----------
 
 def run_analysis(ticker_string: str):
     raw_tickers = [t.strip().upper() for t in ticker_string.split(",")]
@@ -298,8 +299,9 @@ if st.session_state["results"] is None:
         "to see multi-factor momentum-based signals."
     )
 
+    default_query = st.session_state["pending_query"] or "AAPL, TSLA, NVDA"
     with st.form("initial_search"):
-        tickers_input = st.text_input("Tickers", "AAPL, TSLA, NVDA")
+        tickers_input = st.text_input("Tickers", default_query)
         submitted = st.form_submit_button("Analyze")
 
     st.markdown("##### Or tap a trending ticker")
@@ -317,6 +319,8 @@ if st.session_state["results"] is None:
         if results_sorted is not None:
             st.session_state["results"] = results_sorted
             st.session_state["last_query"] = tickers_input
+            st.session_state["pending_query"] = ""
+            st.experimental_rerun()
 
     # Handle trending ticker click
     if clicked_ticker:
@@ -324,6 +328,8 @@ if st.session_state["results"] is None:
         if results_sorted is not None:
             st.session_state["results"] = results_sorted
             st.session_state["last_query"] = clicked_ticker
+            st.session_state["pending_query"] = ""
+            st.experimental_rerun()
 
 else:
     # ---- RESULTS MODE ----
@@ -331,36 +337,23 @@ else:
 
     st.markdown(f"#### Results for: `{query}`")
 
-    # Small inline new-search form
-    with st.form("new_search"):
-        new_query = st.text_input("New tickers", query)
-        col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("New search"):
+            # Go back to hero with last query prefilled
+            st.session_state["pending_query"] = st.session_state["last_query"]
+            st.session_state["results"] = None
+            st.experimental_rerun()
 
-        with col1:
-            run_new = st.form_submit_button("Run new search")
-        with col2:
-            clear = st.form_submit_button("Clear & go back")
-        with col3:
-            # quick trending dropdown-style: show as text hint
-            st.markdown(
-                "<div style='font-size:0.85rem; padding-top:10px;'>"
-                "Trending: AAPL · NVDA · TSLA · AVGO · SMCI"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+    with col2:
+        if st.button("Clear & go back"):
+            # Go back to hero with empty field
+            st.session_state["pending_query"] = ""
+            st.session_state["last_query"] = ""
+            st.session_state["results"] = None
+            st.experimental_rerun()
 
     st.write("---")
-
-    if run_new:
-        results_sorted = run_analysis(new_query)
-        if results_sorted is not None:
-            st.session_state["results"] = results_sorted
-            st.session_state["last_query"] = new_query
-
-    elif clear:
-        st.session_state["results"] = None
-        st.session_state["last_query"] = ""
-        st.experimental_rerun()
 
 # If we have results in session_state, render them
 if st.session_state["results"] is not None:
@@ -420,3 +413,4 @@ st.caption(
     "any security are being made. You are solely responsible for your own "
     "investment decisions."
 )
+
