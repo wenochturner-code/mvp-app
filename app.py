@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 import yfinance as yf
 from datetime import datetime   # <-- for logging
@@ -396,7 +396,7 @@ st.caption(
     "purposes only and is not financial advice."
 )
 
-# ---------- Admin log viewer (password-gated) ----------
+# ---------- Admin analytics (password-gated) ----------
 show_admin = False
 admin_key = st.sidebar.text_input(
     "Admin key", type="password", placeholder="leave blank if not admin"
@@ -405,20 +405,57 @@ if admin_key == "chartbrain123":   # <-- change this to whatever you want
     show_admin = True
 
 if show_admin:
-    with st.expander("📊 Admin: View usage log"):
+    with st.expander("📊 Admin: Usage analytics"):
         try:
             df_log = pd.read_csv(
                 "events_log.csv",
-                sep="|",                     # match the logger separator
+                sep="|",
                 header=None,
                 names=["timestamp", "event", "tickers"]
             )
+
+            # --- Overview counts ---
+            total_events = len(df_log)
+            manual_searches = (df_log["event"] == "manual_search").sum()
+            scans = (df_log["event"] == "scan").sum()
+            trending_clicks = (df_log["event"] == "trending_click").sum()
+            watchlist_scans = (df_log["event"] == "scan_watchlist").sum()
+
+            st.write("### Overview")
+            st.write(f"- **Total events:** {total_events}")
+            st.write(f"- **Manual searches:** {manual_searches}")
+            st.write(f"- **Scan calls:** {scans}")
+            st.write(f"- **Trending clicks:** {trending_clicks}")
+            st.write(f"- **Watchlist scans:** {watchlist_scans}")
+
+            # --- Top tickers ---
+            ticker_series = df_log["tickers"].dropna().astype(str)
+            all_tickers = []
+            for s in ticker_series:
+                all_tickers.extend(
+                    [t.strip().upper() for t in s.split(",") if t.strip()]
+                )
+
+            if all_tickers:
+                st.write("### Most searched tickers")
+                top = (
+                    pd.Series(all_tickers)
+                    .value_counts()
+                    .head(10)
+                    .rename("Count")
+                    .reset_index()
+                    .rename(columns={"index": "Ticker"})
+                )
+                st.dataframe(top, use_container_width=True)
+            else:
+                st.caption("No ticker data yet.")
+
+            # --- Raw log (for debugging) ---
+            st.write("### Raw log")
             st.dataframe(df_log, use_container_width=True)
+
         except FileNotFoundError:
             st.caption("No log file found yet.")
-
-
-
 
 
 
