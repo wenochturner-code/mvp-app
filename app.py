@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from datetime import datetime   # <-- added for logging
+from datetime import datetime   # <-- for logging
 
 st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
 
@@ -21,14 +21,17 @@ def log_event(event_type: str, tickers: str):
     """
     Lightweight event logger.
     Writes events to a local CSV file for usage analytics.
+    Uses '|' as separator so commas in tickers are safe.
     """
     try:
         ts = datetime.utcnow().isoformat()
-        row = f"{ts},{event_type},{tickers}\n"
+        row = f"{ts}|{event_type}|{tickers}\n"
         with open("events_log.csv", "a", encoding="utf-8") as f:
             f.write(row)
     except Exception:
-        pass  # never break the app if logging fails
+        # never break the app if logging fails
+        pass
+
 
 # ---------- Small helper utilities ----------
 
@@ -393,16 +396,28 @@ st.caption(
     "purposes only and is not financial advice."
 )
 
-with st.expander("📊 Admin: View usage log"):
-    try:
-        df_log = pd.read_csv(
-            "events_log.csv",
-            header=None,
-            names=["timestamp", "event", "tickers"]
-        )
-        st.dataframe(df_log, use_container_width=True)
-    except:
-        st.caption("No log file found yet.")
+# ---------- Admin log viewer (password-gated) ----------
+show_admin = False
+admin_key = st.sidebar.text_input(
+    "Admin key", type="password", placeholder="leave blank if not admin"
+)
+if admin_key == "chartbrain123":   # <-- change this to whatever you want
+    show_admin = True
+
+if show_admin:
+    with st.expander("📊 Admin: View usage log"):
+        try:
+            df_log = pd.read_csv(
+                "events_log.csv",
+                sep="|",                     # match the logger separator
+                header=None,
+                names=["timestamp", "event", "tickers"]
+            )
+            st.dataframe(df_log, use_container_width=True)
+        except FileNotFoundError:
+            st.caption("No log file found yet.")
+
+
 
 
 
