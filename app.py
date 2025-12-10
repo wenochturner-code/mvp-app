@@ -5,7 +5,7 @@ import yfinance as yf
 st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
 
 st.title("Stock Analyzer MVP")
-st.info("Beta version – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
+st.info("Beta – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
 
 st.write(
     "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
@@ -15,6 +15,8 @@ st.write(
 tickers_input = st.text_input("Tickers", "AAPL, TSLA, NVDA")
 
 
+# ---------- Small helper utilities ----------
+
 def label_with_emoji(label: str) -> str:
     if label == "Bullish":
         return "🟢 Bullish"
@@ -22,6 +24,41 @@ def label_with_emoji(label: str) -> str:
         return "🔴 Bearish"
     return "⚪ Neutral"
 
+
+def classify_risk(vol_factor: float) -> str:
+    """
+    Simple risk tag based on relative volatility.
+    vol_factor ~1 = normal, >1.5 = spicy, <0.8 = calm.
+    """
+    if vol_factor <= 0.8:
+        return "Low"
+    elif vol_factor <= 1.5:
+        return "Medium"
+    else:
+        return "High"
+
+
+def classify_timeframe(today_change: float, five_day_change: float, trend_20: float) -> str:
+    """
+    Rough guess of what timeframe the setup looks best for.
+    This is just heuristics for now (ML can replace later).
+    """
+    # Strong short pop, not much 20d trend → day/small swing
+    if abs(today_change) > 2.0 and abs(trend_20) < 4.0:
+        return "Short-term (1–3 days)"
+
+    # 5d and 20d pointing same way with some size → swing
+    if abs(five_day_change) > 3.0 and (five_day_change * trend_20) > 0:
+        return "Swing (3–10 days)"
+
+    # Modest 20d but not crazy short-term moves → longer hold
+    if abs(trend_20) > 5.0 and abs(today_change) < 2.0:
+        return "Trend / Position"
+
+    return "Mixed / Unclear"
+
+
+# ---------- Signal engine (chart brain v0) ----------
 
 def compute_signal_and_explanation(
     ticker: str,
@@ -34,7 +71,7 @@ def compute_signal_and_explanation(
     Returns:
         signal: 'Bullish' | 'Bearish' | 'Neutral'
         confidence: 'High' | 'Medium' | 'Low'
-        explanation: str
+        explanation: str (AI-style "chart read" text)
         score: float  # overall numeric score for debugging / sorting
     """
 
@@ -58,7 +95,6 @@ def compute_signal_and_explanation(
     def clamp(x, lo, hi):
         return max(lo, min(hi, x))
 
-    # Slightly more aggressive scaling so normal trends push the score more
     t1_norm = clamp(today_change, -4, 4) / 4.0        # -1 .. 1
     t5_norm = clamp(five_day_change, -10, 10) / 10.0  # -1 .. 1
     t20_norm = clamp(trend_20, -20, 20) / 20.0        # -1 .. 1
@@ -102,7 +138,6 @@ def compute_signal_and_explanation(
         base_conf = "High"
     elif abs_score >= 0.25:
         base_conf = "Medium"
-        # otherwise Low
     else:
         base_conf = "Low"
 
@@ -139,19 +174,20 @@ def compute_signal_and_explanation(
     ]
     trend_summary = ", ".join(trend_bits)
 
+    # High-level “chart brain” explanation
     if signal == "Bullish":
         reason = (
             f"{ticker} is showing a **Bullish** trend overall. "
-            f"Short- and medium-term momentum are skewed to the upside."
+            f"Short- and medium-term momentum lean to the upside."
         )
     elif signal == "Bearish":
         reason = (
             f"{ticker} is showing a **Bearish** trend overall. "
-            f"Short- and medium-term momentum are skewed to the downside."
+            f"Short- and medium-term momentum lean to the downside."
         )
     else:
         reason = (
-            f"{ticker} is **Neutral** right now. "
+            f"{ticker} looks **Neutral** right now. "
             f"Recent moves don’t strongly favor bulls or bears."
         )
 
@@ -159,11 +195,13 @@ def compute_signal_and_explanation(
         f"{reason} "
         f"Recent performance → {trend_summary}. "
         f"{vol_note} "
-        f"(Overall score: {score:+.2f}, confidence: {confidence}.)"
+        f"(Internal score: {score:+.2f}, confidence: {confidence}.)"
     )
 
     return signal, confidence, explanation, score
 
+
+# ---------- UI / app logic ----------
 
 st.write("---")
 
@@ -221,6 +259,9 @@ if st.button("Analyze"):
                         vol_factor,
                     )
 
+                    risk = classify_risk(vol_factor)
+                    timeframe = classify_timeframe(today_change, five_day_change, trend_20)
+
                     results.append(
                         {
                             "Ticker": ticker,
@@ -231,6 +272,8 @@ if st.button("Analyze"):
                             "5-day %": five_day_change,
                             "20-day %": trend_20,
                             "Vol factor": vol_factor,
+                            "Risk": risk,
+                            "Timeframe": timeframe,
                             "Explanation": explanation,
                         }
                     )
@@ -243,10 +286,22 @@ if st.button("Analyze"):
         else:
             results_sorted = sorted(results, key=lambda x: x["Score"], reverse=True)
 
-            st.subheader("Summary Table")
+            # ---------- Summary table (overview) ----------
+            st.subheader("Summary")
 
             df = pd.DataFrame(results_sorted)[
-                ["Ticker", "Signal", "Confidence", "Score", "Today %", "5-day %", "20-day %", "Vol factor"]
+                [
+                    "Ticker",
+                    "Signal",
+                    "Confidence",
+                    "Risk",
+                    "Timeframe",
+                    "Score",
+                    "Today %",
+                    "5-day %",
+                    "20-day %",
+                    "Vol factor",
+                ]
             ]
 
             df["Score"] = df["Score"].round(2)
@@ -257,14 +312,33 @@ if st.button("Analyze"):
 
             st.dataframe(df, use_container_width=True)
 
+            # ---------- Card-style detailed view ----------
             st.write("---")
-            st.subheader("Detailed Signals")
+            st.subheader("Chart Brain Read (per ticker)")
 
             for row in results_sorted:
                 signal_label = label_with_emoji(row["Signal"])
-                st.markdown(
-                    f"### {row['Ticker']} – {signal_label} (Confidence: {row['Confidence']})"
-                )
-                st.caption(row["Explanation"])
+                with st.container():
+                    st.markdown(f"### {row['Ticker']} – {signal_label}")
+                    st.markdown(
+                        f"**Score:** {row['Score']:.2f} · "
+                        f"**Confidence:** {row['Confidence']} · "
+                        f"**Risk:** {row['Risk']} · "
+                        f"**Timeframe:** {row['Timeframe']}"
+                    )
+
+                    st.markdown(
+                        f"- **Today:** {row['Today %']:+.2f}%  "
+                        f"- **5-day:** {row['5-day %']:+.2f}%  "
+                        f"- **20-day:** {row['20-day %']:+.2f}%  "
+                        f"- **Vol factor:** {row['Vol factor']:.2f}"
+                    )
+
+                    # This is your AI-style context for now
+                    st.caption(row["Explanation"])
+
+                    st.write("---")
+
+
 
 
