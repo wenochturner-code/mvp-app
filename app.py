@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+from datetime import datetime   # <-- added for logging
 
 st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
 
@@ -14,6 +15,21 @@ if "last_query" not in st.session_state:
 if "pending_query" not in st.session_state:
     st.session_state["pending_query"] = ""
 
+# ---------- Simple usage logging ----------
+
+def log_event(event_type: str, tickers: str):
+    """
+    Lightweight event logger.
+    Writes events to a local CSV file for usage analytics.
+    """
+    try:
+        ts = datetime.utcnow().isoformat()
+        row = f"{ts},{event_type},{tickers}\n"
+        with open("events_log.csv", "a", encoding="utf-8") as f:
+            f.write(row)
+    except Exception:
+        pass  # never break the app if logging fails
+
 # ---------- Small helper utilities ----------
 
 def label_with_emoji(label: str) -> str:
@@ -25,35 +41,19 @@ def label_with_emoji(label: str) -> str:
 
 
 def classify_risk(vol_factor: float) -> str:
-    """
-    Simple risk tag based on relative volatility.
-    vol_factor ~1 = normal, >1.5 = spicy, <0.8 = calm.
-    """
     if vol_factor <= 0.8:
         return "Low"
     elif vol_factor <= 1.5:
         return "Medium"
-    else:
         return "High"
 
-
 def classify_timeframe(today_change: float, five_day_change: float, trend_20: float) -> str:
-    """
-    Rough guess of what timeframe the setup looks best for.
-    This is just heuristics for now (ML can replace later).
-    """
-    # Strong short pop, not much 20d trend → day/small swing
     if abs(today_change) > 2.0 and abs(trend_20) < 4.0:
         return "Short-term (1–3 days)"
-
-    # 5d and 20d pointing same way with some size → swing
     if abs(five_day_change) > 3.0 and (five_day_change * trend_20) > 0:
         return "Swing (3–10 days)"
-
-    # Modest 20d but not crazy short-term moves → longer hold
     if abs(trend_20) > 5.0 and abs(today_change) < 2.0:
         return "Trend / Position"
-
     return "Mixed / Unclear"
 
 
@@ -66,32 +66,23 @@ def classify_setup_and_profile(
     risk: str,
     timeframe: str,
 ):
-    """
-    Rough 'setup type' + who it's best for.
-    This is your v1 AI context: simple rules, but reads like a chart coach.
-    """
     setup = "Mixed / noisy"
 
-    # Big single-day move, small 20d trend
     if abs(today_change) > 3 and abs(trend_20) < 4:
         setup = "Short-term spike"
 
-    # Strong 5d + 20d in same direction
     if abs(five_day_change) > 4 and (five_day_change * trend_20) > 0:
         if signal == "Bullish":
             setup = "Momentum continuation"
         elif signal == "Bearish":
             setup = "Downtrend continuation"
 
-    # Strong 20d, calm short-term
     if abs(trend_20) > 6 and abs(today_change) < 1.5 and abs(five_day_change) < 3:
         setup = "Steady trend"
 
-    # Very small moves everywhere
     if abs(today_change) < 0.8 and abs(five_day_change) < 2 and abs(trend_20) < 4:
         setup = "Sideways / consolidation"
 
-    # Who it's best for
     best_for = "Watchlist only"
 
     if setup in ["Short-term spike", "Momentum continuation"] and risk in ["Medium", "High"]:
@@ -109,29 +100,16 @@ def classify_setup_and_profile(
     return setup, best_for
 
 
-# ---------- Signal engine (chart brain v0) ----------
+# ---------- Signal engine ----------
 
 def compute_signal_and_explanation(
-    ticker: str,
-    today_change: float,
-    five_day_change: float,
-    trend_20: float,
-    vol_factor: float,
+    ticker: str, today_change: float, five_day_change: float, trend_20: float, vol_factor: float
 ):
-    """
-    Returns:
-        signal: 'Bullish' | 'Bearish' | 'Neutral'
-        confidence: 'High' | 'Medium' | 'Low'
-        explanation: str (AI-style "chart read" text)
-        score: float  # overall numeric score for debugging / sorting
-    """
-
-    # Defensive defaults if any value is None / NaN
     def safe(x, default=0.0):
         try:
             if x is None:
                 return default
-            if isinstance(x, float) and (x != x):  # NaN check
+            if isinstance(x, float) and (x != x):
                 return default
             return float(x)
         except Exception:
@@ -142,21 +120,15 @@ def compute_signal_and_explanation(
     trend_20 = safe(trend_20)
     vol_factor = max(safe(vol_factor, 1.0), 0.01)
 
-    # --- Normalize & weight factors ---
     def clamp(x, lo, hi):
         return max(lo, min(hi, x))
 
-    t1_norm = clamp(today_change, -4, 4) / 4.0        # -1 .. 1
-    t5_norm = clamp(five_day_change, -10, 10) / 10.0  # -1 .. 1
-    t20_norm = clamp(trend_20, -20, 20) / 20.0        # -1 .. 1
+    t1_norm = clamp(today_change, -4, 4) / 4.0
+    t5_norm = clamp(five_day_change, -10, 10) / 10.0
+    t20_norm = clamp(trend_20, -20, 20) / 20.0
 
-    score = (
-        0.20 * t1_norm +
-        0.45 * t5_norm +
-        0.35 * t20_norm
-    )
+    score = 0.20 * t1_norm + 0.45 * t5_norm + 0.35 * t20_norm
 
-    # --- Determine signal (direction) ---
     bullish_threshold = 0.25
     bearish_threshold = -0.25
 
@@ -167,23 +139,15 @@ def compute_signal_and_explanation(
     else:
         signal = "Neutral"
 
-    # --- Agreement between factors helps confidence ---
     def dir_from_val(v, eps=0.005):
-        if v > eps:
-            return "up"
-        if v < -eps:
-            return "down"
+        if v > eps: return "up"
+        if v < -eps: return "down"
         return "flat"
 
-    d1 = dir_from_val(today_change)
-    d5 = dir_from_val(five_day_change)
-    d20 = dir_from_val(trend_20)
-    directions = [d1, d5, d20]
-
+    directions = [dir_from_val(today_change), dir_from_val(five_day_change), dir_from_val(trend_20)]
     up_count = directions.count("up")
     down_count = directions.count("down")
 
-    # --- Base confidence from score strength ---
     abs_score = abs(score)
     if abs_score >= 0.50:
         base_conf = "High"
@@ -192,7 +156,6 @@ def compute_signal_and_explanation(
     else:
         base_conf = "Low"
 
-    # --- Adjust confidence with agreement between timeframes ---
     if signal == "Bullish":
         agreement = up_count
     elif signal == "Bearish":
@@ -207,7 +170,6 @@ def compute_signal_and_explanation(
     else:
         confidence = base_conf
 
-    # Volatility note
     if vol_factor > 1.4:
         vol_note = "Volatility is elevated, so expect bigger swings."
     elif vol_factor < 0.7:
@@ -218,36 +180,16 @@ def compute_signal_and_explanation(
     def fmt_pct(x):
         return f"{x:+.1f}%"
 
-    trend_bits = [
-        f"Today: {fmt_pct(today_change)}",
-        f"5-day: {fmt_pct(five_day_change)}",
-        f"20-day: {fmt_pct(trend_20)}",
-    ]
-    trend_summary = ", ".join(trend_bits)
+    trend_summary = f"Today: {fmt_pct(today_change)}, 5-day: {fmt_pct(five_day_change)}, 20-day: {fmt_pct(trend_20)}"
 
-    # High-level “chart brain” explanation
     if signal == "Bullish":
-        reason = (
-            f"{ticker} is showing a **Bullish** trend overall. "
-            f"Short- and medium-term momentum lean to the upside."
-        )
+        reason = f"{ticker} is showing a **Bullish** trend overall."
     elif signal == "Bearish":
-        reason = (
-            f"{ticker} is showing a **Bearish** trend overall. "
-            f"Short- and medium-term momentum lean to the downside."
-        )
+        reason = f"{ticker} is showing a **Bearish** trend overall."
     else:
-        reason = (
-            f"{ticker} looks **Neutral** right now. "
-            f"Recent moves don’t strongly favor bulls or bears."
-        )
+        reason = f"{ticker} looks **Neutral** right now."
 
-    explanation = (
-        f"{reason} "
-        f"Recent performance → {trend_summary}. "
-        f"{vol_note} "
-        f"(Internal score: {score:+.2f}, confidence: {confidence}.)"
-    )
+    explanation = f"{reason} Recent performance → {trend_summary}. {vol_note} (Score: {score:+.2f}, confidence: {confidence})"
 
     return signal, confidence, explanation, score
 
@@ -255,12 +197,14 @@ def compute_signal_and_explanation(
 # ---------- Analysis function ----------
 
 def run_analysis(ticker_string: str):
-    raw_tickers = [t.strip().upper() for t in ticker_string.split(",")]
-    tickers = [t for t in raw_tickers if t]
+    tickers = [t.strip().upper() for t in ticker_string.split(",") if t.strip()]
 
     if not tickers:
         st.warning("Please enter at least one ticker symbol.")
         return None
+
+    # Log the scan
+    log_event("scan", ticker_string)
 
     results = []
 
@@ -268,123 +212,84 @@ def run_analysis(ticker_string: str):
         for ticker in tickers:
             try:
                 data = yf.Ticker(ticker).history(period="30d")
-
                 if data.empty or len(data) < 10:
-                    st.warning(f"{ticker}: Not enough data to analyze.")
+                    st.warning(f"{ticker}: Not enough data.")
                     continue
 
                 closes = data["Close"]
-
                 latest = closes.iloc[-1]
                 prev = closes.iloc[-2]
-                today_change = (latest / prev - 1.0) * 100.0
+                today_change = (latest / prev - 1) * 100
 
-                if len(closes) >= 6:
-                    five_day_base = closes.iloc[-6]
-                    five_day_change = (latest / five_day_base - 1.0) * 100.0
-                else:
-                    five_day_change = 0.0
+                five_day_change = (
+                    (latest / closes.iloc[-6] - 1) * 100
+                    if len(closes) >= 6 else 0
+                )
 
-                if len(closes) >= 21:
-                    twenty_day_base = closes.iloc[-21]
-                    trend_20 = (latest / twenty_day_base - 1.0) * 100.0
-                else:
-                    trend_20 = 0.0
+                trend_20 = (
+                    (latest / closes.iloc[-21] - 1) * 100
+                    if len(closes) >= 21 else 0
+                )
 
                 returns = closes.pct_change().dropna()
-                if len(returns) >= 10:
-                    recent = returns.iloc[-20:] if len(returns) >= 20 else returns
-                    daily_vol_pct = recent.std() * 100.0
-                else:
-                    daily_vol_pct = 0.0
-
-                baseline_vol = 2.0
-                vol_factor = (daily_vol_pct / baseline_vol) if baseline_vol > 0 else 1.0
+                daily_vol_pct = (returns.iloc[-20:].std() * 100) if len(returns) >= 10 else 0
+                vol_factor = daily_vol_pct / 2.0
 
                 signal, confidence, explanation, score = compute_signal_and_explanation(
-                    ticker,
-                    today_change,
-                    five_day_change,
-                    trend_20,
-                    vol_factor,
+                    ticker, today_change, five_day_change, trend_20, vol_factor
                 )
 
                 risk = classify_risk(vol_factor)
                 timeframe = classify_timeframe(today_change, five_day_change, trend_20)
                 setup, best_for = classify_setup_and_profile(
-                    signal,
-                    today_change,
-                    five_day_change,
-                    trend_20,
-                    vol_factor,
-                    risk,
-                    timeframe,
+                    signal, today_change, five_day_change, trend_20, vol_factor, risk, timeframe
                 )
 
-                results.append(
-                    {
-                        "Ticker": ticker,
-                        "Signal": signal,
-                        "Confidence": confidence,
-                        "Score": score,
-                        "Today %": today_change,
-                        "5-day %": five_day_change,
-                        "20-day %": trend_20,
-                        "Vol factor": vol_factor,
-                        "Risk": risk,
-                        "Timeframe": timeframe,
-                        "Setup": setup,
-                        "Best for": best_for,
-                        "Explanation": explanation,
-                    }
-                )
+                results.append({
+                    "Ticker": ticker,
+                    "Signal": signal,
+                    "Confidence": confidence,
+                    "Score": score,
+                    "Today %": today_change,
+                    "5-day %": five_day_change,
+                    "20-day %": trend_20,
+                    "Vol factor": vol_factor,
+                    "Risk": risk,
+                    "Timeframe": timeframe,
+                    "Setup": setup,
+                    "Best for": best_for,
+                    "Explanation": explanation,
+                })
 
             except Exception as e:
                 st.error(f"Error analyzing {ticker}: {e}")
 
-    if not results:
-        st.info("No valid results to show yet.")
-        return None
-
-    return sorted(results, key=lambda x: x["Score"], reverse=True)
+    return sorted(results, key=lambda r: r["Score"], reverse=True)
 
 
-# ---------- Watchlist / trending helpers ----------
+# ---------- Watchlist / trending ----------
 
 TRENDING_TICKERS = ["AAPL", "NVDA", "TSLA", "META", "AVGO", "SMCI", "SPY", "QQQ"]
+UNIVERSE_TICKERS = ["AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL",
+                    "AVGO", "SMCI", "SPY", "QQQ", "NFLX", "AMD", "INTC"]
 
-# Slightly larger universe for scanning
-UNIVERSE_TICKERS = [
-    "AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL", "AVGO", "SMCI",
-    "SPY", "QQQ", "NFLX", "AMD", "INTC"
-]
-
-def get_top_bullish_setups(limit: int = 5):
-    """
-    Scan a small universe and return the top bullish setups by score.
-    """
-    universe_str = ",".join(UNIVERSE_TICKERS)
-    results_sorted = run_analysis(universe_str)
-    if not results_sorted:
+def get_top_bullish_setups(limit=5):
+    log_event("scan_watchlist", ",".join(UNIVERSE_TICKERS))
+    results = run_analysis(",".join(UNIVERSE_TICKERS))
+    if not results:
         return []
-
-    bullish = [r for r in results_sorted if r["Signal"] == "Bullish"]
-    bullish_sorted = sorted(bullish, key=lambda r: r["Score"], reverse=True)
-    return bullish_sorted[:limit]
+    bullish = [r for r in results if r["Signal"] == "Bullish"]
+    return sorted(bullish, key=lambda r: r["Score"], reverse=True)[:limit]
 
 
-# ---------- UI logic: hero vs results mode ----------
+# ---------- UI logic ----------
 
 if st.session_state["results"] is None:
-    # ---- HERO / FIRST VISIT MODE ----
-    st.info("Beta – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
-
-    st.write(
-        "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
-        "to see multi-factor momentum-based signals."
-    )
+    # HERO MODE
+    st.info("Beta – experiment screener using 1/5/20-day momentum and volatility.")
 
     default_query = st.session_state["pending_query"] or "AAPL, TSLA, NVDA"
+
     with st.form("initial_search"):
         tickers_input = st.text_input("Tickers", default_query)
         submitted = st.form_submit_button("Analyze")
@@ -395,24 +300,19 @@ if st.session_state["results"] is None:
     for i, t in enumerate(TRENDING_TICKERS):
         if cols[i % 4].button(t, key=f"trend_{t}"):
             clicked_ticker = t
+            log_event("trending_click", t)
 
-    # Optional: show top bullish setups from our watchlist
-    with st.expander("Today's top bullish setups (from our watchlist)", expanded=False):
+    # Watchlist section
+    with st.expander("Today's top bullish setups (watchlist)"):
         top_setups = get_top_bullish_setups()
-        if top_setups:
-            for row in top_setups:
-                signal_label = label_with_emoji(row["Signal"])
-                st.markdown(
-                    f"- **{row['Ticker']}** – {signal_label} · "
-                    f"Score: {row['Score']:.2f} · {row['Timeframe']} · {row['Setup']}"
-                )
-        else:
-            st.caption("No strong bullish setups detected in the current watchlist.")
+        for row in top_setups:
+            st.markdown(
+                f"- **{row['Ticker']}** – {row['Signal']} · Score: {row['Score']:.2f} · {row['Timeframe']} · {row['Setup']}"
+            )
 
-    st.write("---")
-
-    # Handle manual search
+    # Manual search submit
     if submitted:
+        log_event("manual_search", tickers_input)
         results_sorted = run_analysis(tickers_input)
         if results_sorted is not None:
             st.session_state["results"] = results_sorted
@@ -420,7 +320,7 @@ if st.session_state["results"] is None:
             st.session_state["pending_query"] = ""
             st.rerun()
 
-    # Handle trending ticker click
+    # Trending click submit
     if clicked_ticker:
         results_sorted = run_analysis(clicked_ticker)
         if results_sorted is not None:
@@ -430,98 +330,60 @@ if st.session_state["results"] is None:
             st.rerun()
 
 else:
-    # ---- RESULTS MODE ----
+    # RESULTS MODE
     query = st.session_state["last_query"]
-
     st.markdown(f"#### Results for: `{query}`")
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("New search"):
-            # Go back to hero with last query prefilled
-            st.session_state["pending_query"] = st.session_state["last_query"]
-            st.session_state["results"] = None
-            st.rerun()
-
-    with col2:
-        if st.button("Clear & go back"):
-            # Go back to hero with empty field
-            st.session_state["pending_query"] = ""
-            st.session_state["last_query"] = ""
-            st.session_state["results"] = None
-            st.rerun()
+    col1, col2 = st.columns(2)
+    if col1.button("New search"):
+        st.session_state["pending_query"] = st.session_state["last_query"]
+        st.session_state["results"] = None
+        st.rerun()
+    if col2.button("Clear & go back"):
+        st.session_state["pending_query"] = ""
+        st.session_state["last_query"] = ""
+        st.session_state["results"] = None
+        st.rerun()
 
     st.write("---")
 
-# If we have results in session_state, render them
+
+# ---------- Render results ----------
+
 if st.session_state["results"] is not None:
     results_sorted = st.session_state["results"]
 
-    # ---------- Summary table ----------
     st.subheader("Summary")
-
     df = pd.DataFrame(results_sorted)[
-        [
-            "Ticker",
-            "Signal",
-            "Confidence",
-            "Risk",
-            "Timeframe",
-            "Score",
-        ]
+        ["Ticker", "Signal", "Confidence", "Risk", "Timeframe", "Score"]
     ]
     df["Score"] = df["Score"].round(2)
-
     st.dataframe(df, use_container_width=True)
 
-    # ---------- Card-style detailed view ----------
     st.write("---")
-    st.subheader("Chart Brain Read (per ticker)")
+    st.subheader("Chart Brain Read")
 
     for row in results_sorted:
-        signal_label = label_with_emoji(row["Signal"])
-        with st.container():
-            # Header
-            st.markdown(f"### {row['Ticker']} – {signal_label}")
+        st.markdown(f"### {row['Ticker']} – {label_with_emoji(row['Signal'])}")
+        st.markdown(
+            f"**Score:** {row['Score']:.2f} · **Confidence:** {row['Confidence']} · "
+            f"**Risk:** {row['Risk']} · **Timeframe:** {row['Timeframe']}"
+        )
+        st.markdown(
+            f"• Today: {row['Today %']:+.2f}% | 5-day: {row['5-day %']:+.2f}% | "
+            f"20-day: {row['20-day %']:+.2f}% | Vol: {row['Vol factor']:.2f}"
+        )
+        st.markdown(f"**Setup:** {row['Setup']} · **Best for:** {row['Best for']}")
+        st.caption(row["Explanation"])
+        st.write("---")
 
-            # Meta line
-            st.markdown(
-                f"**Score:** {row['Score']:.2f} · "
-                f"**Confidence:** {row['Confidence']} · "
-                f"**Risk:** {row['Risk']} · "
-                f"**Timeframe:** {row['Timeframe']}"
-            )
 
-            # Compact stat line
-            st.markdown(
-                f"• Today: {row['Today %']:+.2f}%  |  "
-                f"5-day: {row['5-day %']:+.2f}%  |  "
-                f"20-day: {row['20-day %']:+.2f}%  |  "
-                f"Vol factor: {row['Vol factor']:.2f}"
-            )
-
-            # Setup + profile
-            st.markdown(
-                f"**Setup type:** {row['Setup']} · "
-                f"**Best for:** {row['Best for']}"
-            )
-
-            # Explanation
-            st.caption(row["Explanation"])
-
-            st.write("---")
-
-# ---------- Global disclaimer footer ----------
+# ---------- Footer ----------
 st.write("---")
 st.caption(
     "Disclaimer: This tool provides automated market analysis for educational "
-    "and informational purposes only and does not constitute financial, "
-    "investment, or trading advice. No recommendations to buy, sell, or hold "
-    "any security are being made. You are solely responsible for your own "
-    "investment decisions."
+    "purposes only and is not financial advice."
 )
-
-
 
 
 
