@@ -289,6 +289,7 @@ if st.button("Analyze"):
             # ---------- Summary table (overview) ----------
             st.subheader("Summary")
 
+            # High-level summary only (no sideways scrolling)
             df = pd.DataFrame(results_sorted)[
                 [
                     "Ticker",
@@ -297,18 +298,10 @@ if st.button("Analyze"):
                     "Risk",
                     "Timeframe",
                     "Score",
-                    "Today %",
-                    "5-day %",
-                    "20-day %",
-                    "Vol factor",
                 ]
             ]
 
             df["Score"] = df["Score"].round(2)
-            df["Today %"] = df["Today %"].round(2)
-            df["5-day %"] = df["5-day %"].round(2)
-            df["20-day %"] = df["20-day %"].round(2)
-            df["Vol factor"] = df["Vol factor"].round(2)
 
             st.dataframe(df, use_container_width=True)
 
@@ -327,11 +320,12 @@ if st.button("Analyze"):
                         f"**Timeframe:** {row['Timeframe']}"
                     )
 
+                    # Compact “stat line”
                     st.markdown(
-                        f"- **Today:** {row['Today %']:+.2f}%  "
-                        f"- **5-day:** {row['5-day %']:+.2f}%  "
-                        f"- **20-day:** {row['20-day %']:+.2f}%  "
-                        f"- **Vol factor:** {row['Vol factor']:.2f}"
+                        f"• Today: {row['Today %']:+.2f}%  |  "
+                        f"5-day: {row['5-day %']:+.2f}%  |  "
+                        f"20-day: {row['20-day %']:+.2f}%  |  "
+                        f"Vol factor: {row['Vol factor']:.2f}"
                     )
 
                     # This is your AI-style context for now
