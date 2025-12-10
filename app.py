@@ -5,6 +5,8 @@ import yfinance as yf
 st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
 
 st.title("Stock Analyzer MVP")
+st.info("Beta version – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
+
 st.write(
     "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
     "to see multi-factor momentum-based signals."
@@ -264,4 +266,5 @@ if st.button("Analyze"):
                     f"### {row['Ticker']} – {signal_label} (Confidence: {row['Confidence']})"
                 )
                 st.caption(row["Explanation"])
+
 
