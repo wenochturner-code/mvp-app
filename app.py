@@ -56,6 +56,7 @@ def classify_timeframe(today_change: float, five_day_change: float, trend_20: fl
 
     return "Mixed / Unclear"
 
+
 def classify_setup_and_profile(
     signal: str,
     today_change: float,
@@ -69,7 +70,6 @@ def classify_setup_and_profile(
     Rough 'setup type' + who it's best for.
     This is your v1 AI context: simple rules, but reads like a chart coach.
     """
-
     setup = "Mixed / noisy"
 
     # Big single-day move, small 20d trend
@@ -107,7 +107,6 @@ def classify_setup_and_profile(
         best_for = "Range / mean-reversion traders"
 
     return setup, best_for
-
 
 
 # ---------- Signal engine (chart brain v0) ----------
@@ -311,35 +310,34 @@ def run_analysis(ticker_string: str):
                 )
 
                 risk = classify_risk(vol_factor)
-timeframe = classify_timeframe(today_change, five_day_change, trend_20)
-setup, best_for = classify_setup_and_profile(
-    signal,
-    today_change,
-    five_day_change,
-    trend_20,
-    vol_factor,
-    risk,
-    timeframe,
-)
+                timeframe = classify_timeframe(today_change, five_day_change, trend_20)
+                setup, best_for = classify_setup_and_profile(
+                    signal,
+                    today_change,
+                    five_day_change,
+                    trend_20,
+                    vol_factor,
+                    risk,
+                    timeframe,
+                )
 
-results.append(
-    {
-        "Ticker": ticker,
-        "Signal": signal,
-        "Confidence": confidence,
-        "Score": score,
-        "Today %": today_change,
-        "5-day %": five_day_change,
-        "20-day %": trend_20,
-        "Vol factor": vol_factor,
-        "Risk": risk,
-        "Timeframe": timeframe,
-        "Setup": setup,
-        "Best for": best_for,
-        "Explanation": explanation,
-    }
-)
-
+                results.append(
+                    {
+                        "Ticker": ticker,
+                        "Signal": signal,
+                        "Confidence": confidence,
+                        "Score": score,
+                        "Today %": today_change,
+                        "5-day %": five_day_change,
+                        "20-day %": trend_20,
+                        "Vol factor": vol_factor,
+                        "Risk": risk,
+                        "Timeframe": timeframe,
+                        "Setup": setup,
+                        "Best for": best_for,
+                        "Explanation": explanation,
+                    }
+                )
 
             except Exception as e:
                 st.error(f"Error analyzing {ticker}: {e}")
@@ -385,7 +383,7 @@ if st.session_state["results"] is None:
             st.session_state["results"] = results_sorted
             st.session_state["last_query"] = tickers_input
             st.session_state["pending_query"] = ""
-            st.experimental_rerun()
+            st.rerun()
 
     # Handle trending ticker click
     if clicked_ticker:
@@ -441,47 +439,39 @@ if st.session_state["results"] is not None:
 
     st.dataframe(df, use_container_width=True)
 
-   # ---------- Card-style detailed view ----------
-st.write("---")
-st.subheader("Chart Brain Read (per ticker)")
+    # ---------- Card-style detailed view ----------
+    st.write("---")
+    st.subheader("Chart Brain Read (per ticker)")
 
-for row in results_sorted:
-    signal_label = label_with_emoji(row["Signal"])
-    with st.container():
+    for row in results_sorted:
+        signal_label = label_with_emoji(row["Signal"])
+        with st.container():
+            # Header
+            st.markdown(f"### {row['Ticker']} – {signal_label}")
 
-        # Header
-        st.markdown(f"### {row['Ticker']} – {signal_label}")
+            # Meta line
+            st.markdown(
+                f"**Score:** {row['Score']:.2f} · "
+                f"**Confidence:** {row['Confidence']} · "
+                f"**Risk:** {row['Risk']} · "
+                f"**Timeframe:** {row['Timeframe']}"
+            )
 
-        # Meta line
-        st.markdown(
-            f"**Score:** {row['Score']:.2f} · "
-            f"**Confidence:** {row['Confidence']} · "
-            f"**Risk:** {row['Risk']} · "
-            f"**Timeframe:** {row['Timeframe']}"
-        )
+            # Compact stat line
+            st.markdown(
+                f"• Today: {row['Today %']:+.2f}%  |  "
+                f"5-day: {row['5-day %']:+.2f}%  |  "
+                f"20-day: {row['20-day %']:+.2f}%  |  "
+                f"Vol factor: {row['Vol factor']:.2f}"
+            )
 
-        # Compact stat line
-        st.markdown(
-            f"• Today: {row['Today %']:+.2f}%  |  "
-            f"5-day: {row['5-day %']:+.2f}%  |  "
-            f"20-day: {row['20-day %']:+.2f}%  |  "
-            f"Vol factor: {row['Vol factor']:.2f}"
-        )
+            # Setup + profile
+            st.markdown(
+                f"**Setup type:** {row['Setup']} · "
+                f"**Best for:** {row['Best for']}"
+            )
 
-        # Setup + profile
-        st.markdown(
-            f"**Setup type:** {row['Setup']} · "
-            f"**Best for:** {row['Best for']}"
-        )
-
-        # Explanation
-        st.caption(row["Explanation"])
-
-        st.write("---")
-
-
-
-            # This is your AI-style context for now
+            # Explanation
             st.caption(row["Explanation"])
 
             st.write("---")
@@ -495,6 +485,8 @@ st.caption(
     "any security are being made. You are solely responsible for your own "
     "investment decisions."
 )
+
+
 
 
 
