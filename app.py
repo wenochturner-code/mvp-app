@@ -349,9 +349,31 @@ def run_analysis(ticker_string: str):
     return sorted(results, key=lambda x: x["Score"], reverse=True)
 
 
-# ---------- UI logic: hero vs results mode ----------
+# ---------- Watchlist / trending helpers ----------
 
 TRENDING_TICKERS = ["AAPL", "NVDA", "TSLA", "META", "AVGO", "SMCI", "SPY", "QQQ"]
+
+# Slightly larger universe for scanning
+UNIVERSE_TICKERS = [
+    "AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL", "AVGO", "SMCI",
+    "SPY", "QQQ", "NFLX", "AMD", "INTC"
+]
+
+def get_top_bullish_setups(limit: int = 5):
+    """
+    Scan a small universe and return the top bullish setups by score.
+    """
+    universe_str = ",".join(UNIVERSE_TICKERS)
+    results_sorted = run_analysis(universe_str)
+    if not results_sorted:
+        return []
+
+    bullish = [r for r in results_sorted if r["Signal"] == "Bullish"]
+    bullish_sorted = sorted(bullish, key=lambda r: r["Score"], reverse=True)
+    return bullish_sorted[:limit]
+
+
+# ---------- UI logic: hero vs results mode ----------
 
 if st.session_state["results"] is None:
     # ---- HERO / FIRST VISIT MODE ----
@@ -373,6 +395,19 @@ if st.session_state["results"] is None:
     for i, t in enumerate(TRENDING_TICKERS):
         if cols[i % 4].button(t, key=f"trend_{t}"):
             clicked_ticker = t
+
+    # Optional: show top bullish setups from our watchlist
+    with st.expander("Today's top bullish setups (from our watchlist)", expanded=False):
+        top_setups = get_top_bullish_setups()
+        if top_setups:
+            for row in top_setups:
+                signal_label = label_with_emoji(row["Signal"])
+                st.markdown(
+                    f"- **{row['Ticker']}** – {signal_label} · "
+                    f"Score: {row['Score']:.2f} · {row['Timeframe']} · {row['Setup']}"
+                )
+        else:
+            st.caption("No strong bullish setups detected in the current watchlist.")
 
     st.write("---")
 
@@ -485,6 +520,7 @@ st.caption(
     "any security are being made. You are solely responsible for your own "
     "investment decisions."
 )
+
 
 
 
