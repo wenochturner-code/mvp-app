@@ -41,11 +41,17 @@ def label_with_emoji(label: str) -> str:
 
 
 def classify_risk(vol_factor: float) -> str:
+    """
+    Simple risk tag based on relative volatility.
+    vol_factor ~1 = normal, >1.5 = spicy, <0.8 = calm.
+    """
     if vol_factor <= 0.8:
         return "Low"
     elif vol_factor <= 1.5:
         return "Medium"
+    else:
         return "High"
+
 
 def classify_timeframe(today_change: float, five_day_change: float, trend_20: float) -> str:
     if abs(today_change) > 2.0 and abs(trend_20) < 4.0:
@@ -140,8 +146,10 @@ def compute_signal_and_explanation(
         signal = "Neutral"
 
     def dir_from_val(v, eps=0.005):
-        if v > eps: return "up"
-        if v < -eps: return "down"
+        if v > eps:
+            return "up"
+        if v < -eps:
+            return "down"
         return "flat"
 
     directions = [dir_from_val(today_change), dir_from_val(five_day_change), dir_from_val(trend_20)]
@@ -395,7 +403,6 @@ with st.expander("📊 Admin: View usage log"):
         st.dataframe(df_log, use_container_width=True)
     except:
         st.caption("No log file found yet.")
-
 
 
 
