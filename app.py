@@ -329,7 +329,7 @@ if st.session_state["results"] is None:
             st.session_state["results"] = results_sorted
             st.session_state["last_query"] = clicked_ticker
             st.session_state["pending_query"] = ""
-            st.experimental_rerun()
+            st.rerun()
 
 else:
     # ---- RESULTS MODE ----
@@ -343,7 +343,7 @@ else:
             # Go back to hero with last query prefilled
             st.session_state["pending_query"] = st.session_state["last_query"]
             st.session_state["results"] = None
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:
         if st.button("Clear & go back"):
@@ -351,7 +351,7 @@ else:
             st.session_state["pending_query"] = ""
             st.session_state["last_query"] = ""
             st.session_state["results"] = None
-            st.experimental_rerun()
+            st.rerun()
 
     st.write("---")
 
@@ -413,4 +413,5 @@ st.caption(
     "any security are being made. You are solely responsible for your own "
     "investment decisions."
 )
+
 
