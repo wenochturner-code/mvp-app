@@ -5,14 +5,12 @@ import yfinance as yf
 st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
 
 st.title("Stock Analyzer MVP")
-st.info("Beta – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
 
-st.write(
-    "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
-    "to see multi-factor momentum-based signals."
-)
-
-tickers_input = st.text_input("Tickers", "AAPL, TSLA, NVDA")
+# ---- Session state for results / query ----
+if "results" not in st.session_state:
+    st.session_state["results"] = None
+if "last_query" not in st.session_state:
+    st.session_state["last_query"] = ""
 
 
 # ---------- Small helper utilities ----------
@@ -201,138 +199,224 @@ def compute_signal_and_explanation(
     return signal, confidence, explanation, score
 
 
-# ---------- UI / app logic ----------
+# ---------- Analysis function (used by both initial + new search) ----------
 
-st.write("---")
-
-if st.button("Analyze"):
-    raw_tickers = [t.strip().upper() for t in tickers_input.split(",")]
+def run_analysis(ticker_string: str):
+    raw_tickers = [t.strip().upper() for t in ticker_string.split(",")]
     tickers = [t for t in raw_tickers if t]
 
     if not tickers:
         st.warning("Please enter at least one ticker symbol.")
-    else:
-        results = []
+        return None
 
-        with st.spinner("Fetching data and computing signals..."):
-            for ticker in tickers:
-                try:
-                    data = yf.Ticker(ticker).history(period="30d")
+    results = []
 
-                    if data.empty or len(data) < 10:
-                        st.warning(f"{ticker}: Not enough data to analyze.")
-                        continue
+    with st.spinner("Fetching data and computing signals..."):
+        for ticker in tickers:
+            try:
+                data = yf.Ticker(ticker).history(period="30d")
 
-                    closes = data["Close"]
+                if data.empty or len(data) < 10:
+                    st.warning(f"{ticker}: Not enough data to analyze.")
+                    continue
 
-                    latest = closes.iloc[-1]
-                    prev = closes.iloc[-2]
-                    today_change = (latest / prev - 1.0) * 100.0
+                closes = data["Close"]
 
-                    if len(closes) >= 6:
-                        five_day_base = closes.iloc[-6]
-                        five_day_change = (latest / five_day_base - 1.0) * 100.0
-                    else:
-                        five_day_change = 0.0
+                latest = closes.iloc[-1]
+                prev = closes.iloc[-2]
+                today_change = (latest / prev - 1.0) * 100.0
 
-                    if len(closes) >= 21:
-                        twenty_day_base = closes.iloc[-21]
-                        trend_20 = (latest / twenty_day_base - 1.0) * 100.0
-                    else:
-                        trend_20 = 0.0
+                if len(closes) >= 6:
+                    five_day_base = closes.iloc[-6]
+                    five_day_change = (latest / five_day_base - 1.0) * 100.0
+                else:
+                    five_day_change = 0.0
 
-                    returns = closes.pct_change().dropna()
-                    if len(returns) >= 10:
-                        recent = returns.iloc[-20:] if len(returns) >= 20 else returns
-                        daily_vol_pct = recent.std() * 100.0
-                    else:
-                        daily_vol_pct = 0.0
+                if len(closes) >= 21:
+                    twenty_day_base = closes.iloc[-21]
+                    trend_20 = (latest / twenty_day_base - 1.0) * 100.0
+                else:
+                    trend_20 = 0.0
 
-                    baseline_vol = 2.0
-                    vol_factor = (daily_vol_pct / baseline_vol) if baseline_vol > 0 else 1.0
+                returns = closes.pct_change().dropna()
+                if len(returns) >= 10:
+                    recent = returns.iloc[-20:] if len(returns) >= 20 else returns
+                    daily_vol_pct = recent.std() * 100.0
+                else:
+                    daily_vol_pct = 0.0
 
-                    signal, confidence, explanation, score = compute_signal_and_explanation(
-                        ticker,
-                        today_change,
-                        five_day_change,
-                        trend_20,
-                        vol_factor,
-                    )
+                baseline_vol = 2.0
+                vol_factor = (daily_vol_pct / baseline_vol) if baseline_vol > 0 else 1.0
 
-                    risk = classify_risk(vol_factor)
-                    timeframe = classify_timeframe(today_change, five_day_change, trend_20)
+                signal, confidence, explanation, score = compute_signal_and_explanation(
+                    ticker,
+                    today_change,
+                    five_day_change,
+                    trend_20,
+                    vol_factor,
+                )
 
-                    results.append(
-                        {
-                            "Ticker": ticker,
-                            "Signal": signal,
-                            "Confidence": confidence,
-                            "Score": score,
-                            "Today %": today_change,
-                            "5-day %": five_day_change,
-                            "20-day %": trend_20,
-                            "Vol factor": vol_factor,
-                            "Risk": risk,
-                            "Timeframe": timeframe,
-                            "Explanation": explanation,
-                        }
-                    )
+                risk = classify_risk(vol_factor)
+                timeframe = classify_timeframe(today_change, five_day_change, trend_20)
 
-                except Exception as e:
-                    st.error(f"Error analyzing {ticker}: {e}")
+                results.append(
+                    {
+                        "Ticker": ticker,
+                        "Signal": signal,
+                        "Confidence": confidence,
+                        "Score": score,
+                        "Today %": today_change,
+                        "5-day %": five_day_change,
+                        "20-day %": trend_20,
+                        "Vol factor": vol_factor,
+                        "Risk": risk,
+                        "Timeframe": timeframe,
+                        "Explanation": explanation,
+                    }
+                )
 
-        if not results:
-            st.info("No valid results to show yet.")
-        else:
-            results_sorted = sorted(results, key=lambda x: x["Score"], reverse=True)
+            except Exception as e:
+                st.error(f"Error analyzing {ticker}: {e}")
 
-            # ---------- Summary table (overview) ----------
-            st.subheader("Summary")
+    if not results:
+        st.info("No valid results to show yet.")
+        return None
 
-            # High-level summary only (no sideways scrolling)
-            df = pd.DataFrame(results_sorted)[
-                [
-                    "Ticker",
-                    "Signal",
-                    "Confidence",
-                    "Risk",
-                    "Timeframe",
-                    "Score",
-                ]
-            ]
+    return sorted(results, key=lambda x: x["Score"], reverse=True)
 
-            df["Score"] = df["Score"].round(2)
 
-            st.dataframe(df, use_container_width=True)
+# ---------- UI logic: hero vs results mode ----------
 
-            # ---------- Card-style detailed view ----------
+TRENDING_TICKERS = ["AAPL", "NVDA", "TSLA", "META", "AVGO", "SMCI", "SPY", "QQQ"]
+
+if st.session_state["results"] is None:
+    # ---- HERO / FIRST VISIT MODE ----
+    st.info("Beta – experimental trend screener using 1/5/20-day momentum and volatility. Feedback welcome.")
+
+    st.write(
+        "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
+        "to see multi-factor momentum-based signals."
+    )
+
+    with st.form("initial_search"):
+        tickers_input = st.text_input("Tickers", "AAPL, TSLA, NVDA")
+        submitted = st.form_submit_button("Analyze")
+
+    st.markdown("##### Or tap a trending ticker")
+    clicked_ticker = None
+    cols = st.columns(4)
+    for i, t in enumerate(TRENDING_TICKERS):
+        if cols[i % 4].button(t, key=f"trend_{t}"):
+            clicked_ticker = t
+
+    st.write("---")
+
+    # Handle manual search
+    if submitted:
+        results_sorted = run_analysis(tickers_input)
+        if results_sorted is not None:
+            st.session_state["results"] = results_sorted
+            st.session_state["last_query"] = tickers_input
+
+    # Handle trending ticker click
+    if clicked_ticker:
+        results_sorted = run_analysis(clicked_ticker)
+        if results_sorted is not None:
+            st.session_state["results"] = results_sorted
+            st.session_state["last_query"] = clicked_ticker
+
+else:
+    # ---- RESULTS MODE ----
+    query = st.session_state["last_query"]
+
+    st.markdown(f"#### Results for: `{query}`")
+
+    # Small inline new-search form
+    with st.form("new_search"):
+        new_query = st.text_input("New tickers", query)
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col1:
+            run_new = st.form_submit_button("Run new search")
+        with col2:
+            clear = st.form_submit_button("Clear & go back")
+        with col3:
+            # quick trending dropdown-style: show as text hint
+            st.markdown(
+                "<div style='font-size:0.85rem; padding-top:10px;'>"
+                "Trending: AAPL · NVDA · TSLA · AVGO · SMCI"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+    st.write("---")
+
+    if run_new:
+        results_sorted = run_analysis(new_query)
+        if results_sorted is not None:
+            st.session_state["results"] = results_sorted
+            st.session_state["last_query"] = new_query
+
+    elif clear:
+        st.session_state["results"] = None
+        st.session_state["last_query"] = ""
+        st.experimental_rerun()
+
+# If we have results in session_state, render them
+if st.session_state["results"] is not None:
+    results_sorted = st.session_state["results"]
+
+    # ---------- Summary table ----------
+    st.subheader("Summary")
+
+    df = pd.DataFrame(results_sorted)[
+        [
+            "Ticker",
+            "Signal",
+            "Confidence",
+            "Risk",
+            "Timeframe",
+            "Score",
+        ]
+    ]
+    df["Score"] = df["Score"].round(2)
+
+    st.dataframe(df, use_container_width=True)
+
+    # ---------- Card-style detailed view ----------
+    st.write("---")
+    st.subheader("Chart Brain Read (per ticker)")
+
+    for row in results_sorted:
+        signal_label = label_with_emoji(row["Signal"])
+        with st.container():
+            st.markdown(f"### {row['Ticker']} – {signal_label}")
+            st.markdown(
+                f"**Score:** {row['Score']:.2f} · "
+                f"**Confidence:** {row['Confidence']} · "
+                f"**Risk:** {row['Risk']} · "
+                f"**Timeframe:** {row['Timeframe']}"
+            )
+
+            # Compact “stat line”
+            st.markdown(
+                f"• Today: {row['Today %']:+.2f}%  |  "
+                f"5-day: {row['5-day %']:+.2f}%  |  "
+                f"20-day: {row['20-day %']:+.2f}%  |  "
+                f"Vol factor: {row['Vol factor']:.2f}"
+            )
+
+            # This is your AI-style context for now
+            st.caption(row["Explanation"])
+
             st.write("---")
-            st.subheader("Chart Brain Read (per ticker)")
 
-            for row in results_sorted:
-                signal_label = label_with_emoji(row["Signal"])
-                with st.container():
-                    st.markdown(f"### {row['Ticker']} – {signal_label}")
-                    st.markdown(
-                        f"**Score:** {row['Score']:.2f} · "
-                        f"**Confidence:** {row['Confidence']} · "
-                        f"**Risk:** {row['Risk']} · "
-                        f"**Timeframe:** {row['Timeframe']}"
-                    )
-
-                    # Compact “stat line”
-                    st.markdown(
-                        f"• Today: {row['Today %']:+.2f}%  |  "
-                        f"5-day: {row['5-day %']:+.2f}%  |  "
-                        f"20-day: {row['20-day %']:+.2f}%  |  "
-                        f"Vol factor: {row['Vol factor']:.2f}"
-                    )
-
-                    # This is your AI-style context for now
-                    st.caption(row["Explanation"])
-
-                    st.write("---")
-
-
-
-
+# ---------- Global disclaimer footer ----------
+st.write("---")
+st.caption(
+    "Disclaimer: This tool provides automated market analysis for educational "
+    "and informational purposes only and does not constitute financial, "
+    "investment, or trading advice. No recommendations to buy, sell, or hold "
+    "any security are being made. You are solely responsible for your own "
+    "investment decisions."
+)
