@@ -56,6 +56,59 @@ def classify_timeframe(today_change: float, five_day_change: float, trend_20: fl
 
     return "Mixed / Unclear"
 
+def classify_setup_and_profile(
+    signal: str,
+    today_change: float,
+    five_day_change: float,
+    trend_20: float,
+    vol_factor: float,
+    risk: str,
+    timeframe: str,
+):
+    """
+    Rough 'setup type' + who it's best for.
+    This is your v1 AI context: simple rules, but reads like a chart coach.
+    """
+
+    setup = "Mixed / noisy"
+
+    # Big single-day move, small 20d trend
+    if abs(today_change) > 3 and abs(trend_20) < 4:
+        setup = "Short-term spike"
+
+    # Strong 5d + 20d in same direction
+    if abs(five_day_change) > 4 and (five_day_change * trend_20) > 0:
+        if signal == "Bullish":
+            setup = "Momentum continuation"
+        elif signal == "Bearish":
+            setup = "Downtrend continuation"
+
+    # Strong 20d, calm short-term
+    if abs(trend_20) > 6 and abs(today_change) < 1.5 and abs(five_day_change) < 3:
+        setup = "Steady trend"
+
+    # Very small moves everywhere
+    if abs(today_change) < 0.8 and abs(five_day_change) < 2 and abs(trend_20) < 4:
+        setup = "Sideways / consolidation"
+
+    # Who it's best for
+    best_for = "Watchlist only"
+
+    if setup in ["Short-term spike", "Momentum continuation"] and risk in ["Medium", "High"]:
+        best_for = "Aggressive short-term traders"
+    elif setup in ["Momentum continuation", "Steady trend"] and risk in ["Low", "Medium"]:
+        if "Swing" in timeframe:
+            best_for = "Swing traders"
+        elif "Trend" in timeframe or "Position" in timeframe:
+            best_for = "Trend / position holders"
+        else:
+            best_for = "Active swing traders"
+    elif setup in ["Sideways / consolidation"]:
+        best_for = "Range / mean-reversion traders"
+
+    return setup, best_for
+
+
 
 # ---------- Signal engine (chart brain v0) ----------
 
@@ -258,23 +311,35 @@ def run_analysis(ticker_string: str):
                 )
 
                 risk = classify_risk(vol_factor)
-                timeframe = classify_timeframe(today_change, five_day_change, trend_20)
+timeframe = classify_timeframe(today_change, five_day_change, trend_20)
+setup, best_for = classify_setup_and_profile(
+    signal,
+    today_change,
+    five_day_change,
+    trend_20,
+    vol_factor,
+    risk,
+    timeframe,
+)
 
-                results.append(
-                    {
-                        "Ticker": ticker,
-                        "Signal": signal,
-                        "Confidence": confidence,
-                        "Score": score,
-                        "Today %": today_change,
-                        "5-day %": five_day_change,
-                        "20-day %": trend_20,
-                        "Vol factor": vol_factor,
-                        "Risk": risk,
-                        "Timeframe": timeframe,
-                        "Explanation": explanation,
-                    }
-                )
+results.append(
+    {
+        "Ticker": ticker,
+        "Signal": signal,
+        "Confidence": confidence,
+        "Score": score,
+        "Today %": today_change,
+        "5-day %": five_day_change,
+        "20-day %": trend_20,
+        "Vol factor": vol_factor,
+        "Risk": risk,
+        "Timeframe": timeframe,
+        "Setup": setup,
+        "Best for": best_for,
+        "Explanation": explanation,
+    }
+)
+
 
             except Exception as e:
                 st.error(f"Error analyzing {ticker}: {e}")
@@ -376,28 +441,45 @@ if st.session_state["results"] is not None:
 
     st.dataframe(df, use_container_width=True)
 
-    # ---------- Card-style detailed view ----------
-    st.write("---")
-    st.subheader("Chart Brain Read (per ticker)")
+   # ---------- Card-style detailed view ----------
+st.write("---")
+st.subheader("Chart Brain Read (per ticker)")
 
-    for row in results_sorted:
-        signal_label = label_with_emoji(row["Signal"])
-        with st.container():
-            st.markdown(f"### {row['Ticker']} – {signal_label}")
-            st.markdown(
-                f"**Score:** {row['Score']:.2f} · "
-                f"**Confidence:** {row['Confidence']} · "
-                f"**Risk:** {row['Risk']} · "
-                f"**Timeframe:** {row['Timeframe']}"
-            )
+for row in results_sorted:
+    signal_label = label_with_emoji(row["Signal"])
+    with st.container():
 
-            # Compact “stat line”
-            st.markdown(
-                f"• Today: {row['Today %']:+.2f}%  |  "
-                f"5-day: {row['5-day %']:+.2f}%  |  "
-                f"20-day: {row['20-day %']:+.2f}%  |  "
-                f"Vol factor: {row['Vol factor']:.2f}"
-            )
+        # Header
+        st.markdown(f"### {row['Ticker']} – {signal_label}")
+
+        # Meta line
+        st.markdown(
+            f"**Score:** {row['Score']:.2f} · "
+            f"**Confidence:** {row['Confidence']} · "
+            f"**Risk:** {row['Risk']} · "
+            f"**Timeframe:** {row['Timeframe']}"
+        )
+
+        # Compact stat line
+        st.markdown(
+            f"• Today: {row['Today %']:+.2f}%  |  "
+            f"5-day: {row['5-day %']:+.2f}%  |  "
+            f"20-day: {row['20-day %']:+.2f}%  |  "
+            f"Vol factor: {row['Vol factor']:.2f}"
+        )
+
+        # Setup + profile
+        st.markdown(
+            f"**Setup type:** {row['Setup']} · "
+            f"**Best for:** {row['Best for']}"
+        )
+
+        # Explanation
+        st.caption(row["Explanation"])
+
+        st.write("---")
+
+
 
             # This is your AI-style context for now
             st.caption(row["Explanation"])
@@ -413,5 +495,6 @@ st.caption(
     "any security are being made. You are solely responsible for your own "
     "investment decisions."
 )
+
 
 
