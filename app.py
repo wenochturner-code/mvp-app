@@ -134,7 +134,7 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
     if len(close) >= 6:
         five_day_change = safe_pct_change(close.iloc[-1], close.iloc[-6])
     else:
-        five_day_change = np.nan
+        five_day_change = float("nan")
 
     # 20-day trend via linear regression on last 20 closes
     if len(close) >= 20:
@@ -144,27 +144,27 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
         # normalize slope to % over 20 days
         trend_20 = (slope * 20 / recent_20.iloc[-1]) * 100.0
     else:
-        trend_20 = np.nan
+        trend_20 = float("nan")
 
     # RSI(14)
     rsi_14 = compute_rsi(close, period=14)
 
     # Volume spike: today's volume vs 20-day average
-if len(volume) >= 21:
-    # force everything to plain floats so pandas can't be weird
-    vol_avg = float(volume.iloc[-21:-1].mean())
-    last_vol = float(volume.iloc[-1])
+    if len(volume) >= 21:
+        # force everything to plain floats so pandas can't be weird
+        vol_avg = float(volume.iloc[-21:-1].mean())
+        last_vol = float(volume.iloc[-1])
 
-    if np.isnan(vol_avg) or vol_avg <= 0:
-        vol_spike = np.nan
+        if np.isnan(vol_avg) or vol_avg <= 0:
+            vol_spike = float("nan")
+        else:
+            vol_spike = last_vol / vol_avg
     else:
-        vol_spike = last_vol / vol_avg
-else:
-    vol_spike = np.nan
+        vol_spike = float("nan")
 
     # SMA crossover
     sma_20 = close.rolling(20).mean().iloc[-1]
-    sma_50 = close.rolling(50).mean().iloc[-1] if len(close) >= 50 else np.nan
+    sma_50 = close.rolling(50).mean().iloc[-1] if len(close) >= 50 else float("nan")
     if not np.isnan(sma_20) and not np.isnan(sma_50):
         if sma_20 > sma_50:
             sma_crossover = "Bullish (20 > 50)"
@@ -207,7 +207,7 @@ else:
         elif rsi_14 > 70:
             rsi_score = 30  # overbought – bearish tilt
         else:
-            # map 30-70 to 60-40 (neutral-ish)
+            # map 30–70 to 60–40 (neutral-ish)
             rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
     else:
         rsi_score = 50
@@ -232,6 +232,44 @@ else:
         + rsi_score * w_rsi
         + vol_score * w_vol
     )
+
+    label = simple_label_from_score(overall_score)
+
+    # ----------------- EXPLANATION -----------------
+    explanation_parts = []
+
+    explanation_parts.append(
+        f"Today change: **{today_change:.2f}%**; 5-day change: **{five_day_change:.2f}%**."
+    )
+    explanation_parts.append(
+        f"20-day price trend (regression): **{trend_20:.2f}%** over the last 20 sessions."
+    )
+    explanation_parts.append(f"RSI(14): **{rsi_14:.1f}**.")
+    explanation_parts.append(
+        f"Volume spike factor: **{vol_spike:.2f}x** vs 20-day average."
+    )
+    explanation_parts.append(f"SMA status: **{sma_crossover}**.")
+
+    explanation_parts.append(
+        f"\nOverall signal strength: **{overall_score:.1f} / 100** → **{label}**."
+    )
+
+    explanation = "  \n".join(explanation_parts)
+
+    return {
+        "today_change": today_change,
+        "five_day_change": five_day_change,
+        "trend_20": trend_20,
+        "rsi_14": rsi_14,
+        "vol_spike": vol_spike,
+        "sma_20": sma_20,
+        "sma_50": sma_50,
+        "sma_crossover": sma_crossover,
+        "overall_score": overall_score,
+        "label": label,
+        "explanation": explanation,
+    }
+
 
     label = simple_label_from_score(overall_score)
 
@@ -443,6 +481,7 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
+
 
 
 
