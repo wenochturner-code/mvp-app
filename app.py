@@ -38,15 +38,26 @@ def log_event(event_type: str, tickers: str):
 
 # ----------------- INDICATOR HELPERS -----------------
 def compute_rsi(series: pd.Series, period: int = 14) -> float:
-    if len(series) < period + 1:
+    """
+    Robust RSI(14) that avoids 2D ndarray issues.
+    """
+    s = pd.Series(series).dropna()
+    if len(s) < period + 1:
         return np.nan
-    delta = series.diff()
-    gain = np.where(delta > 0, delta, 0.0)
-    loss = np.where(delta < 0, -delta, 0.0)
-    roll_up = pd.Series(gain).rolling(period).mean()
-    roll_down = pd.Series(loss).rolling(period).mean()
-    rs = roll_up / roll_down
-    rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    delta = s.diff()
+
+    # Gains (up moves) and losses (down moves)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+
+    # Avoid division by zero
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+
     return float(rsi.iloc[-1])
 
 
@@ -373,7 +384,7 @@ elif page == "Analytics":
         # Drop totally empty rows
         df_log = df_log.dropna(how="all")
 
-        # ---------- FIX: robust datetime parsing ----------
+        # Robust datetime parsing
         df_log["timestamp"] = pd.to_datetime(
             df_log["timestamp"], errors="coerce"
         )
@@ -415,7 +426,6 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
-
 
 
 
