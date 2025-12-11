@@ -26,7 +26,7 @@ st.markdown(
           letter-spacing: -0.8px;
           color: #1F2937;
       ">
-        <span style="font-size: 3rem; color: #22C55E; line-height: 1; font-weight: 900;">⬆️</span>
+        <span style="font-size: 3rem; color: #22C55E; line-height: 1; font-weight: 900;">➚</span>
         Friendly Ticker
       </h1>
 
@@ -302,6 +302,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
