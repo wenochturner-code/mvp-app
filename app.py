@@ -15,25 +15,20 @@ st.markdown(
         text-align: center;
     ">
 
-     <h1 style="
-    margin-bottom: 1.2rem;
-    font-size: 3.2rem;
-    font-weight: 800;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 1.1rem;
-    letter-spacing: -0.8px;
-    color: #1F2937;
-">
-  <span style="font-size: 3.4rem; color: #22C55E; line-height: 1; font-weight: 900; padding-top: 4px;">
-    ➚
-  </span>
-  Friendly Ticker
-</h1>
-
+      <h1 style="
+          margin-bottom: 1.2rem;
+          font-size: 3.2rem;
+          font-weight: 800;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 1.1rem;
+          letter-spacing: -0.8px;
+          color: #1F2937;
       ">
-        <span style="font-size: 3rem; color: #22C55E; line-height: 1; font-weight: 900;">➚</span>
+        <span style="font-size: 3.4rem; color: #22C55E; line-height: 1; font-weight: 900; padding-top: 4px;">
+          ➚
+        </span>
         Friendly Ticker
       </h1>
 
@@ -52,6 +47,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 
 
 
@@ -309,6 +305,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
