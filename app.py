@@ -22,6 +22,17 @@ st.markdown(
         color: #777777;
         text-align: center;
     }
+    /* tighten top padding so content sits higher */
+    .main {
+        padding-top: 30px !important;
+    }
+    /* simple card style for results */
+    .card {
+        padding: 20px;
+        border-radius: 12px;
+        background-color: #fafafa;
+        border: 1px solid #eeeeee;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -55,36 +66,38 @@ st.markdown(
     "<p class='centered'>Quick sanity checks on your stocks before you buy or sell.</p>",
     unsafe_allow_html=True,
 )
-st.write("")
+# pull content slightly closer to the header
+st.markdown("<div style='margin-top:-10px;'></div>", unsafe_allow_html=True)
 
 # ---------------- Layout ----------------
-left, right = st.columns([2, 1], gap="large")
+with st.container():
+    left, right = st.columns([2, 1], gap="large")
 
-with left:
-    st.subheader("Analyze tickers")
+    with left:
+        st.markdown("### Analyze tickers")
 
-    tickers_input = st.text_input(
-        "Enter one or more symbols (comma separated)",
-        value="AAPL, TSLA, NVDA",
-        help="Example: AAPL, TSLA, NVDA",
-    )
+        tickers_input = st.text_input(
+            "Enter one or more symbols (comma separated)",
+            value="AAPL, TSLA, NVDA",
+            help="Example: AAPL, TSLA, NVDA",
+        )
 
-    analyze_button = st.button("Analyze", type="primary")
+        analyze_button = st.button("Analyze", type="primary")
 
-with right:
-    st.subheader("What this tool does")
-    st.write(
-        """
-        - Looks at recent price action for each ticker  
-        - Scores short-term momentum & trend  
-        - Labels each as **Bullish / Neutral / Bearish**  
-        - Gives a short explanation you can skim in seconds  
-        """
-    )
-    st.markdown(
-        "<p class='small-text'>For education only. This is not investment advice.</p>",
-        unsafe_allow_html=True,
-    )
+    with right:
+        st.markdown("### What this tool does")
+        st.write(
+            """
+            - Looks at recent price action for each ticker  
+            - Scores short-term momentum & trend  
+            - Labels each as **Bullish / Neutral / Bearish**  
+            - Gives a short explanation you can skim in seconds  
+            """
+        )
+        st.markdown(
+            "<p class='small-text'>For education only. This is not investment advice.</p>",
+            unsafe_allow_html=True,
+        )
 
 st.write("---")
 
@@ -218,7 +231,9 @@ if analyze_button:
         rows = [compute_signal_row(t) for t in tickers]
         results_df = pd.DataFrame(rows)
 
-        st.subheader("Results")
+        st.markdown("### Results")
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+
         st.dataframe(
             results_df.set_index("Ticker"),
             use_container_width=True,
@@ -237,6 +252,8 @@ if analyze_button:
             "<p class='small-text'>Always double-check before making real trades.</p>",
             unsafe_allow_html=True,
         )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 
