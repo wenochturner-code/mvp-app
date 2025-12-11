@@ -1,21 +1,24 @@
-import streamlit as st 
+import os
+from datetime import datetime
+
+import numpy as np
 import pandas as pd
+import streamlit as st
 import yfinance as yf
-from datetime import datetime   # <-- for logging
 
-st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈")
+# ----------------- PAGE CONFIG -----------------
+st.set_page_config(page_title="Stock Analyzer MVP", page_icon="📈", layout="wide")
 
-st.title("Stock Analyzer MVP")
-
-# ---- Session state for results / query ----
+# ----------------- SESSION STATE -----------------
 if "results" not in st.session_state:
     st.session_state["results"] = None
+
 if "last_query" not in st.session_state:
     st.session_state["last_query"] = ""
-if "pending_query" not in st.session_state:
-    st.session_state["pending_query"] = ""
 
-# ---------- Simple usage logging ----------
+# ----------------- SIMPLE USAGE LOGGER -----------------
+LOG_FILE = "events_log.csv"
+
 
 def log_event(event_type: str, tickers: str):
     """
@@ -26,14 +29,41 @@ def log_event(event_type: str, tickers: str):
     try:
         ts = datetime.utcnow().isoformat()
         row = f"{ts}|{event_type}|{tickers}\n"
-        with open("events_log.csv", "a", encoding="utf-8") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(row)
     except Exception:
-        # never break the app if logging fails
+        # Never let logging break the app
         pass
 
 
-# ---------- Small helper utilities ----------
+# ----------------- INDICATOR HELPERS -----------------
+def compute_rsi(series: pd.Series, period: int = 14) -> float:
+    if len(series) < period + 1:
+        return np.nan
+    delta = series.diff()
+    gain = np.where(delta > 0, delta, 0.0)
+    loss = np.where(delta < 0, -delta, 0.0)
+    roll_up = pd.Series(gain).rolling(period).mean()
+    roll_down = pd.Series(loss).rolling(period).mean()
+    rs = roll_up / roll_down
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return float(rsi.iloc[-1])
+
+
+def safe_pct_change(a: float, b: float) -> float:
+    if b == 0 or np.isnan(a) or np.isnan(b):
+        return np.nan
+    return (a / b - 1.0) * 100.0
+
+
+def simple_label_from_score(score: float) -> str:
+    if score >= 65:
+        return "Bullish"
+    elif score <= 35:
+        return "Bearish"
+    else:
+        return "Neutral"
+
 
 def label_with_emoji(label: str) -> str:
     if label == "Bullish":
@@ -43,419 +73,325 @@ def label_with_emoji(label: str) -> str:
     return "⚪ Neutral"
 
 
-def classify_risk(vol_factor: float) -> str:
+def fetch_price_data(ticker: str, period: str = "3mo") -> pd.DataFrame:
+    data = yf.download(ticker, period=period, progress=False)
+    if data is None or data.empty:
+        return pd.DataFrame()
+    return data
+
+
+def compute_indicators_for_ticker(ticker: str) -> dict:
     """
-    Simple risk tag based on relative volatility.
-    vol_factor ~1 = normal, >1.5 = spicy, <0.8 = calm.
+    Returns a dict with:
+    - today_change, five_day_change, trend_20
+    - rsi_14, volume_spike, sma_20, sma_50, sma_crossover
+    - overall_score, label, explanation
     """
-    if vol_factor <= 0.8:
-        return "Low"
-    elif vol_factor <= 1.5:
-        return "Medium"
+    data = fetch_price_data(ticker)
+    if data.empty or len(data) < 30:
+        return {"error": "Not enough data"}
+
+    close = data["Close"]
+    volume = data["Volume"]
+
+    # Today vs previous close
+    today_change = safe_pct_change(close.iloc[-1], close.iloc[-2])
+
+    # 5-day change
+    if len(close) >= 6:
+        five_day_change = safe_pct_change(close.iloc[-1], close.iloc[-6])
     else:
-        return "High"
+        five_day_change = np.nan
 
+    # 20-day trend via linear regression on last 20 closes
+    if len(close) >= 20:
+        recent_20 = close.iloc[-20:]
+        x = np.arange(len(recent_20))
+        slope, _ = np.polyfit(x, recent_20.values, 1)
+        # normalize slope to % over 20 days
+        trend_20 = (slope * 20 / recent_20.iloc[-1]) * 100.0
+    else:
+        trend_20 = np.nan
 
-def classify_timeframe(today_change: float, five_day_change: float, trend_20: float) -> str:
-    if abs(today_change) > 2.0 and abs(trend_20) < 4.0:
-        return "Short-term (1–3 days)"
-    if abs(five_day_change) > 3.0 and (five_day_change * trend_20) > 0:
-        return "Swing (3–10 days)"
-    if abs(trend_20) > 5.0 and abs(today_change) < 2.0:
-        return "Trend / Position"
-    return "Mixed / Unclear"
+    # RSI(14)
+    rsi_14 = compute_rsi(close, period=14)
 
+    # Volume spike: today's volume vs 20-day average
+    if len(volume) >= 21:
+        vol_avg = volume.iloc[-21:-1].mean()
+        vol_spike = float(volume.iloc[-1] / vol_avg) if vol_avg > 0 else np.nan
+    else:
+        vol_spike = np.nan
 
-def classify_setup_and_profile(
-    signal: str,
-    today_change: float,
-    five_day_change: float,
-    trend_20: float,
-    vol_factor: float,
-    risk: str,
-    timeframe: str,
-):
-    setup = "Mixed / noisy"
-
-    if abs(today_change) > 3 and abs(trend_20) < 4:
-        setup = "Short-term spike"
-
-    if abs(five_day_change) > 4 and (five_day_change * trend_20) > 0:
-        if signal == "Bullish":
-            setup = "Momentum continuation"
-        elif signal == "Bearish":
-            setup = "Downtrend continuation"
-
-    if abs(trend_20) > 6 and abs(today_change) < 1.5 and abs(five_day_change) < 3:
-        setup = "Steady trend"
-
-    if abs(today_change) < 0.8 and abs(five_day_change) < 2 and abs(trend_20) < 4:
-        setup = "Sideways / consolidation"
-
-    best_for = "Watchlist only"
-
-    if setup in ["Short-term spike", "Momentum continuation"] and risk in ["Medium", "High"]:
-        best_for = "Aggressive short-term traders"
-    elif setup in ["Momentum continuation", "Steady trend"] and risk in ["Low", "Medium"]:
-        if "Swing" in timeframe:
-            best_for = "Swing traders"
-        elif "Trend" in timeframe or "Position" in timeframe:
-            best_for = "Trend / position holders"
+    # SMA crossover
+    sma_20 = close.rolling(20).mean().iloc[-1]
+    sma_50 = close.rolling(50).mean().iloc[-1] if len(close) >= 50 else np.nan
+    if not np.isnan(sma_20) and not np.isnan(sma_50):
+        if sma_20 > sma_50:
+            sma_crossover = "Bullish (20 > 50)"
+        elif sma_20 < sma_50:
+            sma_crossover = "Bearish (20 < 50)"
         else:
-            best_for = "Active swing traders"
-    elif setup in ["Sideways / consolidation"]:
-        best_for = "Range / mean-reversion traders"
+            sma_crossover = "Neutral"
+    else:
+        sma_crossover = "Not enough data"
 
-    return setup, best_for
-
-
-# ---------- Signal engine ----------
-
-def compute_signal_and_explanation(
-    ticker: str, today_change: float, five_day_change: float, trend_20: float, vol_factor: float
-):
-    def safe(x, default=0.0):
-        try:
-            if x is None:
-                return default
-            if isinstance(x, float) and (x != x):
-                return default
-            return float(x)
-        except Exception:
-            return default
-
-    today_change = safe(today_change)
-    five_day_change = safe(five_day_change)
-    trend_20 = safe(trend_20)
-    vol_factor = max(safe(vol_factor, 1.0), 0.01)
+    # ----------------- SCORING MODEL -----------------
+    # Normalize each factor into 0–100, then average with weights
+    # These thresholds are intentionally moderate so not everything is "Neutral".
 
     def clamp(x, lo, hi):
         return max(lo, min(hi, x))
 
-    t1_norm = clamp(today_change, -4, 4) / 4.0
-    t5_norm = clamp(five_day_change, -10, 10) / 10.0
-    t20_norm = clamp(trend_20, -20, 20) / 20.0
-
-    score = 0.20 * t1_norm + 0.45 * t5_norm + 0.35 * t20_norm
-
-    bullish_threshold = 0.25
-    bearish_threshold = -0.25
-
-    if score >= bullish_threshold:
-        signal = "Bullish"
-    elif score <= bearish_threshold:
-        signal = "Bearish"
+    # Today change: -4% to +4% → 0–100
+    if not np.isnan(today_change):
+        today_score = clamp((today_change + 4) / 8 * 100, 0, 100)
     else:
-        signal = "Neutral"
+        today_score = 50
 
-    def dir_from_val(v, eps=0.005):
-        if v > eps:
-            return "up"
-        if v < -eps:
-            return "down"
-        return "flat"
-
-    directions = [dir_from_val(today_change), dir_from_val(five_day_change), dir_from_val(trend_20)]
-    up_count = directions.count("up")
-    down_count = directions.count("down")
-
-    abs_score = abs(score)
-    if abs_score >= 0.50:
-        base_conf = "High"
-    elif abs_score >= 0.25:
-        base_conf = "Medium"
+    # 5-day change: -10% to +10% → 0–100
+    if not np.isnan(five_day_change):
+        five_score = clamp((five_day_change + 10) / 20 * 100, 0, 100)
     else:
-        base_conf = "Low"
+        five_score = 50
 
-    if signal == "Bullish":
-        agreement = up_count
-    elif signal == "Bearish":
-        agreement = down_count
+    # 20-day trend: -15% to +15% → 0–100
+    if not np.isnan(trend_20):
+        trend_score = clamp((trend_20 + 15) / 30 * 100, 0, 100)
     else:
-        agreement = max(up_count, down_count)
+        trend_score = 50
 
-    if agreement >= 3 and abs_score >= 0.4:
-        confidence = "High"
-    elif agreement >= 2 and abs_score >= 0.25:
-        confidence = "Medium"
+    # RSI: classic 30–70 range
+    if not np.isnan(rsi_14):
+        if rsi_14 < 30:
+            rsi_score = 70  # oversold – bullish tilt
+        elif rsi_14 > 70:
+            rsi_score = 30  # overbought – bearish tilt
+        else:
+            # map 30-70 to 60-40 (neutral-ish)
+            rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
     else:
-        confidence = base_conf
+        rsi_score = 50
 
-    if vol_factor > 1.4:
-        vol_note = "Volatility is elevated, so expect bigger swings."
-    elif vol_factor < 0.7:
-        vol_note = "Price moves have been relatively calm."
+    # Volume spike: 0.5x–3x → 0–100
+    if not np.isnan(vol_spike):
+        vol_score = clamp((vol_spike - 0.5) / 2.5 * 100, 0, 100)
     else:
-        vol_note = "Volatility is in a normal range."
+        vol_score = 50
 
-    def fmt_pct(x):
-        return f"{x:+.1f}%"
+    # Weights
+    w_today = 0.25
+    w_five = 0.2
+    w_trend = 0.25
+    w_rsi = 0.15
+    w_vol = 0.15
 
-    trend_summary = f"Today: {fmt_pct(today_change)}, 5-day: {fmt_pct(five_day_change)}, 20-day: {fmt_pct(trend_20)}"
+    overall_score = (
+        today_score * w_today
+        + five_score * w_five
+        + trend_score * w_trend
+        + rsi_score * w_rsi
+        + vol_score * w_vol
+    )
 
-    if signal == "Bullish":
-        reason = f"{ticker} is showing a **Bullish** trend overall."
-    elif signal == "Bearish":
-        reason = f"{ticker} is showing a **Bearish** trend overall."
-    else:
-        reason = f"{ticker} looks **Neutral** right now."
+    label = simple_label_from_score(overall_score)
 
-    explanation = f"{reason} Recent performance → {trend_summary}. {vol_note} (Score: {score:+.2f}, confidence: {confidence})"
+    # ----------------- EXPLANATION -----------------
+    explanation_parts = []
 
-    return signal, confidence, explanation, score
+    explanation_parts.append(
+        f"Today change: **{today_change:.2f}%**; 5-day change: **{five_day_change:.2f}%**."
+    )
+    explanation_parts.append(
+        f"20-day price trend (regression): **{trend_20:.2f}%** over the last 20 sessions."
+    )
+    explanation_parts.append(f"RSI(14): **{rsi_14:.1f}**.")
+    explanation_parts.append(
+        f"Volume spike factor: **{vol_spike:.2f}x** vs 20-day average."
+    )
+    explanation_parts.append(f"SMA status: **{sma_crossover}**.")
+
+    explanation_parts.append(
+        f"\nOverall signal strength: **{overall_score:.1f} / 100** → **{label}**."
+    )
+
+    explanation = "  \n".join(explanation_parts)
+
+    return {
+        "today_change": today_change,
+        "five_day_change": five_day_change,
+        "trend_20": trend_20,
+        "rsi_14": rsi_14,
+        "vol_spike": vol_spike,
+        "sma_20": sma_20,
+        "sma_50": sma_50,
+        "sma_crossover": sma_crossover,
+        "overall_score": overall_score,
+        "label": label,
+        "explanation": explanation,
+    }
 
 
-# ---------- Analysis function ----------
+# ----------------- UI: SIDEBAR -----------------
+st.sidebar.title("📊 Stock Analyzer MVP")
+page = st.sidebar.radio("Navigation", ["Analyzer", "Analytics"])
 
-def run_analysis(ticker_string: str):
-    tickers = [t.strip().upper() for t in ticker_string.split(",") if t.strip()]
+st.sidebar.markdown("---")
+st.sidebar.caption("v0.2 – Momentum + RSI + Volume spikes")
 
-    if not tickers:
-        st.warning("Please enter at least one ticker symbol.")
-        return None
 
-    # Log the scan
-    log_event("scan", ticker_string)
+# ----------------- PAGE 1: ANALYZER -----------------
+if page == "Analyzer":
+    st.title("📈 Stock Analyzer")
+    st.write(
+        "Enter one or more tickers like `AAPL, TSLA, NVDA` and click **Analyze** "
+        "to get a multi-factor momentum signal with a 0–100 strength score."
+    )
 
-    results = []
+    default_tickers = "AAPL, TSLA, NVDA"
+    tickers_input = st.text_input("Tickers", default_tickers)
 
-    with st.spinner("Fetching data and computing signals..."):
-        for ticker in tickers:
-            try:
-                data = yf.Ticker(ticker).history(period="30d")
-                if data.empty or len(data) < 10:
-                    st.warning(f"{ticker}: Not enough data.")
-                    continue
+    col_btn1, col_btn2 = st.columns([1, 3])
+    with col_btn1:
+        analyze_clicked = st.button("🔍 Analyze")
 
-                closes = data["Close"]
-                latest = closes.iloc[-1]
-                prev = closes.iloc[-2]
-                today_change = (latest / prev - 1) * 100
+    if analyze_clicked:
+        tickers_str = tickers_input.strip()
+        st.session_state["last_query"] = tickers_str
 
-                five_day_change = (
-                    (latest / closes.iloc[-6] - 1) * 100
-                    if len(closes) >= 6 else 0
+        # Log event
+        log_event("analyze_clicked", tickers_str)
+
+        tickers = [
+            t.strip().upper()
+            for t in tickers_str.replace(" ", "").split(",")
+            if t.strip()
+        ]
+
+        results = []
+        for t in tickers:
+            with st.spinner(f"Analyzing {t}..."):
+                info = compute_indicators_for_ticker(t)
+                row = {"Ticker": t}
+                if "error" in info:
+                    row["Error"] = info["error"]
+                else:
+                    row["Signal Strength"] = round(info["overall_score"], 1)
+                    row["Label"] = info["label"]
+                    row["Today %"] = round(info["today_change"], 2)
+                    row["5-Day %"] = round(info["five_day_change"], 2)
+                    row["20-Day Trend %"] = round(info["trend_20"], 2)
+                    row["RSI(14)"] = round(info["rsi_14"], 1)
+                    row["Volume Spike (x)"] = round(info["vol_spike"], 2)
+                    row["SMA Crossover"] = info["sma_crossover"]
+                    row["Explanation"] = info["explanation"]
+                results.append(row)
+
+        st.session_state["results"] = results
+
+    # Display results if present
+    if st.session_state["results"] is not None:
+        results = st.session_state["results"]
+
+        # Summary cards at top: one card per ticker
+        st.markdown("### 🔦 Summary Signals")
+        for row in results:
+            if "Error" in row:
+                with st.container():
+                    st.error(f"{row['Ticker']}: {row['Error']}")
+                continue
+
+            label = row["Label"]
+            emoji_label = label_with_emoji(label)
+
+            col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+            with col1:
+                st.markdown(f"**{row['Ticker']}**")
+                st.markdown(f"### {emoji_label}")
+                st.markdown(
+                    f"**Signal Strength:** {row['Signal Strength']:.1f} / 100"
                 )
+            with col2:
+                st.metric("Today %", f"{row['Today %']:.2f}%")
+                st.metric("5-Day %", f"{row['5-Day %']:.2f}%")
+            with col3:
+                st.metric("20-Day Trend %", f"{row['20-Day Trend %']:.2f}%")
+                st.metric("RSI(14)", f"{row['RSI(14)']:.1f}")
+            with col4:
+                st.metric("Volume Spike (x)", f"{row['Volume Spike (x)']:.2f}")
+                st.markdown(f"**SMA:** {row['SMA Crossover']}")
 
-                trend_20 = (
-                    (latest / closes.iloc[-21] - 1) * 100
-                    if len(closes) >= 21 else 0
-                )
+            with st.expander("View explanation"):
+                st.markdown(row["Explanation"])
 
-                returns = closes.pct_change().dropna()
-                daily_vol_pct = (returns.iloc[-20:].std() * 100) if len(returns) >= 10 else 0
-                vol_factor = daily_vol_pct / 2.0
+            st.markdown("---")
 
-                signal, confidence, explanation, score = compute_signal_and_explanation(
-                    ticker, today_change, five_day_change, trend_20, vol_factor
-                )
+        # Table view
+        df_rows = [r for r in results if "Error" not in r]
+        if df_rows:
+            table_cols = [
+                "Ticker",
+                "Signal Strength",
+                "Label",
+                "Today %",
+                "5-Day %", 
+                "20-Day Trend %",
+                "RSI(14)",
+                "Volume Spike (x)",
+                "SMA Crossover",
+            ]
+            df = pd.DataFrame(df_rows)[table_cols]
+            st.markdown("### 📋 Table View")
+            st.dataframe(df, use_container_width=True)
 
-                risk = classify_risk(vol_factor)
-                timeframe = classify_timeframe(today_change, five_day_change, trend_20)
-                setup, best_for = classify_setup_and_profile(
-                    signal, today_change, five_day_change, trend_20, vol_factor, risk, timeframe
-                )
+# ----------------- PAGE 2: ANALYTICS -----------------
+elif page == "Analytics":
+    st.title("📊 Usage Analytics")
 
-                results.append({
-                    "Ticker": ticker,
-                    "Signal": signal,
-                    "Confidence": confidence,
-                    "Score": score,
-                    "Today %": today_change,
-                    "5-day %": five_day_change,
-                    "20-day %": trend_20,
-                    "Vol factor": vol_factor,
-                    "Risk": risk,
-                    "Timeframe": timeframe,
-                    "Setup": setup,
-                    "Best for": best_for,
-                    "Explanation": explanation,
-                })
-
-            except Exception as e:
-                st.error(f"Error analyzing {ticker}: {e}")
-
-    return sorted(results, key=lambda r: r["Score"], reverse=True)
-
-
-# ---------- Watchlist / trending ----------
-
-TRENDING_TICKERS = ["AAPL", "NVDA", "TSLA", "META", "AVGO", "SMCI", "SPY", "QQQ"]
-UNIVERSE_TICKERS = ["AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL",
-                    "AVGO", "SMCI", "SPY", "QQQ", "NFLX", "AMD", "INTC"]
-
-def get_top_bullish_setups(limit=5):
-    log_event("scan_watchlist", ",".join(UNIVERSE_TICKERS))
-    results = run_analysis(",".join(UNIVERSE_TICKERS))
-    if not results:
-        return []
-    bullish = [r for r in results if r["Signal"] == "Bullish"]
-    return sorted(bullish, key=lambda r: r["Score"], reverse=True)[:limit]
-
-
-# ---------- UI logic ----------
-
-if st.session_state["results"] is None:
-    # HERO MODE
-    st.info("Beta – experiment screener using 1/5/20-day momentum and volatility.")
-
-    default_query = st.session_state["pending_query"] or "AAPL, TSLA, NVDA"
-
-    with st.form("initial_search"):
-        tickers_input = st.text_input("Tickers", default_query)
-        submitted = st.form_submit_button("Analyze")
-
-    st.markdown("##### Or tap a trending ticker")
-    clicked_ticker = None
-    cols = st.columns(4)
-    for i, t in enumerate(TRENDING_TICKERS):
-        if cols[i % 4].button(t, key=f"trend_{t}"):
-            clicked_ticker = t
-            log_event("trending_click", t)
-
-    # Watchlist section
-    with st.expander("Today's top bullish setups (watchlist)"):
-        top_setups = get_top_bullish_setups()
-        for row in top_setups:
-            st.markdown(
-                f"- **{row['Ticker']}** – {row['Signal']} · Score: {row['Score']:.2f} · {row['Timeframe']} · {row['Setup']}"
-            )
-
-    # Manual search submit
-    if submitted:
-        log_event("manual_search", tickers_input)
-        results_sorted = run_analysis(tickers_input)
-        if results_sorted is not None:
-            st.session_state["results"] = results_sorted
-            st.session_state["last_query"] = tickers_input
-            st.session_state["pending_query"] = ""
-            st.rerun()
-
-    # Trending click submit
-    if clicked_ticker:
-        results_sorted = run_analysis(clicked_ticker)
-        if results_sorted is not None:
-            st.session_state["results"] = results_sorted
-            st.session_state["last_query"] = clicked_ticker
-            st.session_state["pending_query"] = ""
-            st.rerun()
-
-else:
-    # RESULTS MODE
-    query = st.session_state["last_query"]
-    st.markdown(f"#### Results for: `{query}`")
-
-    col1, col2 = st.columns(2)
-    if col1.button("New search"):
-        st.session_state["pending_query"] = st.session_state["last_query"]
-        st.session_state["results"] = None
-        st.rerun()
-    if col2.button("Clear & go back"):
-        st.session_state["pending_query"] = ""
-        st.session_state["last_query"] = ""
-        st.session_state["results"] = None
-        st.rerun()
-
-    st.write("---")
-
-
-# ---------- Render results ----------
-
-if st.session_state["results"] is not None:
-    results_sorted = st.session_state["results"]
-
-    st.subheader("Summary")
-    df = pd.DataFrame(results_sorted)[
-        ["Ticker", "Signal", "Confidence", "Risk", "Timeframe", "Score"]
-    ]
-    df["Score"] = df["Score"].round(2)
-    st.dataframe(df, use_container_width=True)
-
-    st.write("---")
-    st.subheader("Chart Brain Read")
-
-    for row in results_sorted:
-        st.markdown(f"### {row['Ticker']} – {label_with_emoji(row['Signal'])}")
-        st.markdown(
-            f"**Score:** {row['Score']:.2f} · **Confidence:** {row['Confidence']} · "
-            f"**Risk:** {row['Risk']} · **Timeframe:** {row['Timeframe']}"
+    if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
+        st.info("No usage data yet. Run some analyses on the **Analyzer** page first.")
+    else:
+        # Read log file
+        df_log = pd.read_csv(
+            LOG_FILE,
+            sep="|",
+            header=None,
+            names=["timestamp", "event_type", "tickers"],
         )
-        st.markdown(
-            f"• Today: {row['Today %']:+.2f}% | 5-day: {row['5-day %']:+.2f}% | "
-            f"20-day: {row['20-day %']:+.2f}% | Vol: {row['Vol factor']:.2f}"
-        )
-        st.markdown(f"**Setup:** {row['Setup']} · **Best for:** {row['Best for']}")
-        st.caption(row["Explanation"])
-        st.write("---")
 
+        # Basic stats
+        st.markdown("### Overview")
+        total_events = len(df_log)
+        total_analyzes = (df_log["event_type"] == "analyze_clicked").sum()
 
-# ---------- Footer ----------
-st.write("---")
-st.caption(
-    "Disclaimer: This tool provides automated market analysis for educational "
-    "purposes only and is not financial advice."
-)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Total logged events", total_events)
+        with col_b:
+            st.metric("Total analyses run", total_analyzes)
 
-# ---------- Admin analytics (password-gated) ----------
-show_admin = False
-admin_key = st.sidebar.text_input(
-    "Admin key", type="password", placeholder="leave blank if not admin"
-)
-if admin_key == "chartbrain123":   # <-- change this to whatever you want
-    show_admin = True
+        # Events per day
+        df_log["date"] = pd.to_datetime(df_log["timestamp"]).dt.date
+        per_day = df_log.groupby("date").size().reset_index(name="events")
 
-if show_admin:
-    with st.expander("📊 Admin: Usage analytics"):
-        try:
-            df_log = pd.read_csv(
-                "events_log.csv",
-                sep="|",
-                header=None,
-                names=["timestamp", "event", "tickers"]
-            )
+        st.markdown("### Activity Over Time")
+        st.line_chart(per_day.set_index("date"))
 
-            # --- Overview counts ---
-            total_events = len(df_log)
-            manual_searches = (df_log["event"] == "manual_search").sum()
-            scans = (df_log["event"] == "scan").sum()
-            trending_clicks = (df_log["event"] == "trending_click").sum()
-            watchlist_scans = (df_log["event"] == "scan_watchlist").sum()
+        # Most popular tickers
+        def split_tickers(x):
+            if pd.isna(x):
+                return []
+            return [t.strip().upper() for t in x.split(",") if t.strip()]
 
-            st.write("### Overview")
-            st.write(f"- **Total events:** {total_events}")
-            st.write(f"- **Manual searches:** {manual_searches}")
-            st.write(f"- **Scan calls:** {scans}")
-            st.write(f"- **Trending clicks:** {trending_clicks}")
-            st.write(f"- **Watchlist scans:** {watchlist_scans}")
-
-            # --- Top tickers ---
-            ticker_series = df_log["tickers"].dropna().astype(str)
-            all_tickers = []
-            for s in ticker_series:
-                all_tickers.extend(
-                    [t.strip().upper() for t in s.split(",") if t.strip()]
-                )
-
-            if all_tickers:
-                st.write("### Most searched tickers")
-                top = (
-                    pd.Series(all_tickers)
-                    .value_counts()
-                    .head(10)
-                    .rename("Count")
-                    .reset_index()
-                    .rename(columns={"index": "Ticker"})
-                )
-                st.dataframe(top, use_container_width=True)
-            else:
-                st.caption("No ticker data yet.")
-
-            # --- Raw log (for debugging) ---
-            st.write("### Raw log")
-            st.dataframe(df_log, use_container_width=True)
-
-        except FileNotFoundError:
-            st.caption("No log file found yet.")
+        exploded = df_log["tickers"].dropna().apply(split_tickers)
+        tickers_flat = [t for sub in exploded for t in sub]
+        if tickers_flat:
+            df_t = pd.Series(tickers_flat).value_counts().reset_index()
+            df_t.columns = ["Ticker", "Count"]
+            st.markdown("### Most Analyzed Tickers")
+            st.bar_chart(df_t.set_index("Ticker"))
+        else:
+            st.info("No tickers recorded yet.")
 
 
 
