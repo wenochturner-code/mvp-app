@@ -27,6 +27,7 @@ def log_event(event_type: str, tickers: str):
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(row)
     except Exception:
+        # Never let logging break the app
         pass
 
 
@@ -146,16 +147,20 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
     vol_spike = to_float(vol_spike)
 
     # --- Scoring ---
-    def clamp(x, lo, hi): return max(lo, min(hi, x))
+    def clamp(x, lo, hi):
+        return max(lo, min(hi, x))
 
     today_score = clamp((today_change + 4) / 8 * 100, 0, 100) if not np.isnan(today_change) else 50
     five_score = clamp((five_day_change + 10) / 20 * 100, 0, 100) if not np.isnan(five_day_change) else 50
     trend_score = clamp((trend_20 + 15) / 30 * 100, 0, 100) if not np.isnan(trend_20) else 50
 
     if not np.isnan(rsi_14):
-        if rsi_14 < 30: rsi_score = 70
-        elif rsi_14 > 70: rsi_score = 30
-        else: rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
+        if rsi_14 < 30:
+            rsi_score = 70
+        elif rsi_14 > 70:
+            rsi_score = 30
+        else:
+            rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
     else:
         rsi_score = 50
 
@@ -197,7 +202,8 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
 
 # ----------------- UI: SIDEBAR -----------------
 st.sidebar.title("📊 Stock Analyzer MVP")
-page = st.sidebar.radio("Navigation", ["Analyzer", "Analytics"])
+# Only show Analyzer in the navigation now (Analytics is hidden)
+page = st.sidebar.radio("Navigation", ["Analyzer"])
 st.sidebar.markdown("---")
 st.sidebar.caption("v0.3 – Momentum + RSI + Volume + SMA")
 
@@ -253,43 +259,3 @@ if page == "Analyzer":
                 st.markdown(row["explanation"])
 
             st.markdown("---")
-
-# ----------------- PAGE 2: ANALYTICS -----------------
-elif page == "Analytics":
-    st.title("📊 Usage Analytics")
-
-    if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
-        st.info("No usage data yet.")
-    else:
-        df_log = pd.read_csv(LOG_FILE, sep="|", header=None,
-                             names=["timestamp", "event_type", "tickers"])
-        df_log = df_log.dropna()
-        df_log["timestamp"] = pd.to_datetime(df_log["timestamp"], errors="coerce")
-        df_log = df_log.dropna(subset=["timestamp"])
-        df_log["date"] = df_log["timestamp"].dt.date
-
-        st.metric("Total logged events", len(df_log))
-        st.metric("Total analyses run", (df_log["event_type"] == "analyze_clicked").sum())
-
-        st.markdown("### Activity Over Time")
-        per_day = df_log.groupby("date").size()
-        st.line_chart(per_day)
-
-        st.markdown("### Most Analyzed Tickers")
-        ticks = []
-        for x in df_log["tickers"]:
-            ticks.extend([t.strip().upper() for t in str(x).split(",") if t.strip()])
-        if ticks:
-            df_t = pd.Series(ticks).value_counts()
-            st.bar_chart(df_t)
-        else:
-            st.info("No tickers recorded yet.")
-
-
-
-
-
-
-
-
-
