@@ -3,44 +3,42 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 
-# ---------- Page config ----------
 st.markdown(
     """
     <div style="
-        padding: 3rem 2.5rem;
-        background-color: #F2F4F7;
-        border-radius: 1.75rem;
-        margin: 3rem auto 3rem auto;
-        max-width: 950px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+        padding: 3rem 3rem;
+        background-color: #EEF1F5;
+        border-radius: 2rem;
+        margin: 3.5rem auto 3rem auto;
+        max-width: 1000px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
         text-align: center;
     ">
 
       <h1 style="
-          margin-bottom: 1rem;
-          font-size: 3rem;
-          font-weight: 700;
+          margin-bottom: 1.2rem;
+          font-size: 3.2rem;
+          font-weight: 800;
           display: flex;
           justify-content: center;
           align-items: center;
           gap: 1rem;
-          letter-spacing: -0.7px;
+          letter-spacing: -0.8px;
+          color: #1F2937;
       ">
-        <span style="font-size: 2.8rem; color: #4CAF50; line-height: 1;">➚</span>
+        <span style="font-size: 3rem; color: #22C55E; line-height: 1; font-weight: 900;">⬆️</span>
         Friendly Ticker
       </h1>
 
       <p style="
-          margin: 0;
-          font-size: 1.25rem;
-          color: #374151;
-          max-width: 720px;
-          margin-left: auto;
-          margin-right: auto;
-          line-height: 1.6;
+          margin: 0 auto;
+          font-size: 1.3rem;
+          line-height: 1.7;
+          color: #4B5563;
+          max-width: 760px;
       ">
         Understand any stock in plain English. Type a ticker and get a simple trend score,
-        risk level, and beginner-friendly explanation. No charts. No jargon.
+        risk level, and beginner-friendly explanation—no charts, no jargon.
       </p>
 
     </div>
@@ -304,6 +302,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
