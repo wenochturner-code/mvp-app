@@ -202,8 +202,7 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
 
 # ----------------- UI: SIDEBAR -----------------
 st.sidebar.title("📊 Stock Analyzer MVP")
-# Only show Analyzer in the navigation now (Analytics is hidden)
-page = st.sidebar.radio("Navigation", ["Analyzer"])
+page = st.sidebar.radio("Navigation", ["Analyzer", "Top Movers"])
 st.sidebar.markdown("---")
 st.sidebar.caption("v0.3 – Momentum + RSI + Volume + SMA")
 
@@ -259,3 +258,97 @@ if page == "Analyzer":
                 st.markdown(row["explanation"])
 
             st.markdown("---")
+
+
+# ----------------- PAGE 2: TOP MOVERS -----------------
+elif page == "Top Movers":
+    st.title("🔥 Top Movers (MVP)")
+
+    st.write(
+        "This scans a fixed list of popular tickers and ranks them by today's move "
+        "and overall signal strength using the same engine as the Analyzer."
+    )
+
+    # Simple hard-coded universe for now (you can edit this list anytime)
+    default_universe = [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
+        "META", "NVDA", "NFLX", "AMD", "INTC",
+        "JPM", "BAC", "XOM", "CVX", "WMT",
+        "COST", "DIS", "QQQ", "SPY", "IWM",
+    ]
+
+    tickers_str = st.text_input(
+        "Universe (comma-separated)", ", ".join(default_universe)
+    )
+
+    col_btn1, col_btn2 = st.columns([1, 3])
+    with col_btn1:
+        scan_clicked = st.button("🚀 Scan Top Movers")
+
+    if scan_clicked:
+        universe = [
+            t.strip().upper()
+            for t in tickers_str.replace(" ", "").split(",")
+            if t.strip()
+        ]
+
+        # Track this event (still private)
+        log_event("top_movers_scan", ",".join(universe))
+
+        movers = []
+        with st.spinner("Scanning universe..."):
+            for t in universe:
+                info = compute_indicators_for_ticker(t)
+                row = {"Ticker": t, **info}
+                movers.append(row)
+
+        # Filter out errors
+        movers_ok = [m for m in movers if "error" not in m]
+
+        if not movers_ok:
+            st.warning("No valid data for the selected universe.")
+        else:
+            # Sort by signal strength descending
+            top_by_score = sorted(
+                movers_ok, key=lambda r: r["overall_score"], reverse=True
+            )[:10]
+
+            # Sort by today's % change descending
+            top_by_today = sorted(
+                movers_ok, key=lambda r: r["today_change"], reverse=True
+            )[:10]
+
+            st.markdown("### 🔝 Top 10 by Signal Strength")
+            for row in top_by_score:
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.markdown(f"**{row['Ticker']}** — {label_with_emoji(row['label'])}")
+                    st.markdown(
+                        f"Signal: **{row['overall_score']:.1f} / 100**  \n"
+                        f"SMA: {row['sma_crossover']}"
+                    )
+                with col2:
+                    st.metric("Today %", f"{row['today_change']:.2f}%")
+                    st.metric("5-Day %", f"{row['five_day_change']:.2f}%")
+                with col3:
+                    st.metric("RSI(14)", f"{row['rsi_14']:.1f}")
+                    st.metric("Vol Spike (x)", f"{row['vol_spike']:.2f}")
+                st.markdown("---")
+
+            st.markdown("### 📈 Top 10 by Today % Move")
+            for row in top_by_today:
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.markdown(f"**{row['Ticker']}** — {label_with_emoji(row['label'])}")
+                    st.markdown(
+                        f"Signal: **{row['overall_score']:.1f} / 100**  \n"
+                        f"SMA: {row['sma_crossover']}"
+                    )
+                with col2:
+                    st.metric("Today %", f"{row['today_change']:.2f}%")
+                    st.metric("5-Day %", f"{row['five_day_change']:.2f}%")
+                with col3:
+                    st.metric("RSI(14)", f"{row['rsi_14']:.1f}")
+                    st.metric("Vol Spike (x)", f"{row['vol_spike']:.2f}")
+                st.markdown("---")
+
