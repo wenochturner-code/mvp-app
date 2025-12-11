@@ -4,12 +4,12 @@ import yfinance as yf
 from datetime import datetime
 
 # ---------- Page config ----------
-st.set_page_config(page_title="Friendly Ticker", page_icon="📊")
-
 st.markdown(
     """
     <div style="padding: 1.5rem 1rem; background-color: #F3F4F6; border-radius: 1rem; margin-bottom: 1.5rem;">
-      <h1 style="margin-bottom: 0.25rem; font-size: 2rem;">📊 Friendly Ticker</h1>
+      <h1 style="margin-bottom: 0.25rem; font-size: 2rem;">
+        <span style="color:#4CAF50;">➚</span> Friendly Ticker
+      </h1>
       <p style="margin: 0; font-size: 1.05rem; color: #4B5563;">
         Understand any stock in plain English. Type a ticker and get a simple trend score,
         risk level, and beginner-friendly explanation. No charts. No jargon.
@@ -18,10 +18,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.write(
-    "Type a stock symbol like **AAPL**, **TSLA**, or **NVDA** and Friendly Ticker will show you an easy, beginner-friendly view "
-    "of its trend, risk, and recent moves."
-)
+
 
 # ---------- Session state ----------
 if "results" not in st.session_state:
@@ -277,6 +274,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
