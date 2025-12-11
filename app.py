@@ -263,6 +263,3 @@ if analyze_button:
 
 
 
-
-
-
