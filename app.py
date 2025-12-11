@@ -1,313 +1,562 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 
-st.markdown(
-    """
-    <div style="
-        padding: 3rem 3rem;
-        background-color: #EEF1F5;
-        border-radius: 2rem;
-        margin: 3.5rem auto 3rem auto;
-        max-width: 1000px;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-        text-align: center;
-    ">
-
-      <h1 style="
-          margin-bottom: 1.2rem;
-          font-size: 3.2rem;
-          font-weight: 800;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 1.1rem;
-          letter-spacing: -0.8px;
-          color: #1F2937;
-      ">
-        <span style="font-size: 3.4rem; color: #22C55E; line-height: 1; font-weight: 900; padding-top: 4px;">
-          ➚
-        </span>
-        Friendly Ticker
-      </h1>
-
-      <p style="
-          margin: 0 auto;
-          font-size: 1.3rem;
-          line-height: 1.7;
-          color: #4B5563;
-          max-width: 760px;
-      ">
-        Understand any stock in plain English. Type a ticker and get a simple trend score,
-        risk level, and beginner-friendly explanation—no charts, no jargon.
-      </p>
-
-    </div>
-    """,
-    unsafe_allow_html=True,
+# ----------------- Page config & basic theming -----------------
+st.set_page_config(
+    page_title="Friendly Ticker • Beginner Stock Analyzer",
+    page_icon="📈",
+    layout="wide"
 )
 
+PRIMARY = "#2563EB"   # blue
+ACCENT = "#22C55E"    # green
+DANGER = "#EF4444"    # red
+MUTED = "#6B7280"     # gray
+BG_SOFT = "#0B1120"   # dark navy
+CARD_BG = "#020617"   # slightly darker
 
+custom_css = f"""
+<style>
+    .main {{
+        background: radial-gradient(circle at top left, #0f172a 0, #020617 50%, #000 100%);
+        color: #e5e7eb;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }}
+    section[data-testid="stSidebar"] {{
+        background-color: #020617;
+        border-right: 1px solid #111827;
+    }}
+    .friendly-hero-title {{
+        font-size: 2.2rem;
+        font-weight: 750;
+        letter-spacing: -0.04em;
+        margin-bottom: 0.25rem;
+    }}
+    .friendly-hero-sub {{
+        font-size: 1rem;
+        color: #9CA3AF;
+        margin-bottom: 0.75rem;
+    }}
+    .pill {{
+        display:inline-flex;
+        align-items:center;
+        gap:0.4rem;
+        padding:0.2rem 0.65rem;
+        border-radius:999px;
+        border:1px solid rgba(148,163,184,0.6);
+        background:rgba(15,23,42,0.8);
+        font-size:0.8rem;
+        color:#E5E7EB;
+    }}
+    .pill span.badge {{
+        padding:0.1rem 0.45rem;
+        border-radius:999px;
+        font-size:0.7rem;
+        font-weight:600;
+        background:rgba(37,99,235,0.15);
+        color:{PRIMARY};
+    }}
+    .hero-card {{
+        border-radius: 1.2rem;
+        padding: 1.3rem 1.4rem;
+        border: 1px solid rgba(148,163,184,0.35);
+        background: radial-gradient(circle at top left, rgba(37,99,235,0.14), rgba(15,23,42,0.96));
+        box-shadow: 0 18px 45px rgba(15,23,42,0.7);
+    }}
+    .input-card {{
+        border-radius: 1rem;
+        padding: 0.9rem 1rem 0.4rem 1rem;
+        border: 1px solid rgba(55,65,81,0.8);
+        background: rgba(15,23,42,0.9);
+        margin-top:0.6rem;
+        margin-bottom:0.4rem;
+    }}
+    .metric-pill {{
+        border-radius:999px;
+        padding:0.15rem 0.65rem;
+        font-size:0.75rem;
+        border:1px solid rgba(75,85,99,0.8);
+        color:#E5E7EB;
+    }}
+    .metric-grid {{
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.4rem;
+        margin-top:0.35rem;
+    }}
+    .result-card {{
+        border-radius: 1.1rem;
+        padding: 0.9rem 1rem;
+        border: 1px solid rgba(55,65,81,0.85);
+        background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96));
+        margin-bottom: 0.65rem;
+    }}
+    .ticker-header {{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:0.6rem;
+        margin-bottom:0.25rem;
+    }}
+    .ticker-main {{
+        font-size:1.05rem;
+        font-weight:650;
+        letter-spacing:0.03em;
+    }}
+    .ticker-sub {{
+        font-size:0.78rem;
+        color:#9CA3AF;
+    }}
+    .score-badge {{
+        border-radius:999px;
+        padding:0.15rem 0.7rem;
+        font-size:0.78rem;
+        font-weight:600;
+        display:inline-flex;
+        align-items:center;
+        gap:0.25rem;
+    }}
+    .score-label {{
+        font-size:0.77rem;
+        color:#9CA3AF;
+    }}
+    .explanation {{
+        font-size:0.8rem;
+        color:#D1D5DB;
+        margin-top:0.25rem;
+    }}
+    .help-text {{
+        font-size:0.75rem;
+        color:#9CA3AF;
+        margin-top:0.15rem;
+    }}
+    .stTextInput>div>div>input {{
+        background-color: #020617;
+        border-radius: 0.7rem;
+        border: 1px solid #374151;
+        color: #E5E7EB;
+        font-size:0.9rem;
+    }}
+    .stButton>button {{
+        border-radius: 999px;
+        border: 1px solid rgba(37,99,235,0.8);
+        background: linear-gradient(135deg, {PRIMARY}, #1D4ED8);
+        color: white;
+        font-weight:600;
+        padding:0.35rem 1.3rem;
+        font-size:0.9rem;
+    }}
+    .stButton>button:hover {{
+        border-color:#60A5FA;
+        background: linear-gradient(135deg, #1D4ED8, #1E3A8A);
+    }}
+    .neutral-pill {{
+        background:rgba(55,65,81,0.5);
+        border:1px solid rgba(55,65,81,0.9);
+    }}
+    .bull-pill {{
+        background:rgba(22,163,74,0.16);
+        border:1px solid rgba(34,197,94,0.9);
+        color:#BBF7D0;
+    }}
+    .bear-pill {{
+        background:rgba(220,38,38,0.16);
+        border:1px solid rgba(248,113,113,0.9);
+        color:#FECACA;
+    }}
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
 
-
-# ---------- Session state ----------
-if "results" not in st.session_state:
-    st.session_state["results"] = None
-
-# ---------- Simple usage logging ----------
-def log_event(event_type: str, tickers: str):
-    """Append simple usage events to a local CSV-style log file."""
-    try:
-        ts = datetime.utcnow().isoformat()
-        row = f"{ts}|{event_type}|{tickers}\n"
-        with open("events_log.csv", "a", encoding="utf-8") as f:
-            f.write(row)
-    except Exception:
-        # Logging should never break the app
-        pass
-
-
-# ---------- Helper functions for labels / text ----------
-
-def label_from_score(score: int) -> str:
-    if score >= 70:
-        return "🟢 Strong Uptrend"
-    if score >= 40:
-        return "⚪ Sideways / Mixed"
-    return "🔴 Weak / Downtrend"
-
-
-def risk_label_from_vol(vol_pct: float) -> str:
-    """Rough risk label based on daily volatility (std dev of daily returns in %)."""
-    if vol_pct < 1.2:
-        return "🟢 Low – moves are usually small"
-    if vol_pct < 2.5:
-        return "⚪ Medium – normal ups and downs"
-    return "🔴 High – price swings can be big"
-
-
-def clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
-
-
-def compute_scores(df: pd.DataFrame) -> dict | None:
-    """Compute all numeric scores needed for the beginner view.
-    Returns a dict or None if we don't have enough data.
-    """
-    if df is None or df.empty or len(df) < 25:
-        return None
-
-    close = df["Close"]
-    last = close.iloc[-1]
-    prev = close.iloc[-2]
-
-    # Today % change
-    today_change_pct = (last - prev) / prev * 100
-
-    # 5-day change (use 5 trading days ago)
-    if len(close) >= 6:
-        five_ago = close.iloc[-6]
-        five_day_change_pct = (last - five_ago) / five_ago * 100
-    else:
-        five_day_change_pct = 0.0
-
-    # 20-day trend vs 20-day average
-    if len(close) >= 20:
-        sma20 = close.tail(20).mean()
-        trend_20_pct = (last - sma20) / sma20 * 100
-    else:
-        trend_20_pct = 0.0
-
-    # Volatility (daily std dev in %)
-    daily_returns = close.pct_change().dropna()
-    vol_pct = float(daily_returns.std() * 100.0)
-
-    # ---- Convert raw metrics to 0–100 scores ----
-    # Today score: clamp -4% to +4% into 0–100
-    today_clamped = clamp(today_change_pct, -4.0, 4.0)
-    today_score = int(round((today_clamped + 4.0) / 8.0 * 100.0))
-
-    # 5-day score: clamp -12% to +12% into 0–100
-    five_clamped = clamp(five_day_change_pct, -12.0, 12.0)
-    five_score = int(round((five_clamped + 12.0) / 24.0 * 100.0))
-
-    # 20-day trend score: clamp -20% to +20% into 0–100
-    trend_clamped = clamp(trend_20_pct, -20.0, 20.0)
-    trend_score = int(round((trend_clamped + 20.0) / 40.0 * 100.0))
-
-    # Volatility score: medium volatility (around 1.5–2.5%) is “best” for beginners.
-    # Penalize how far we are from 2% daily std dev.
-    ideal_vol = 2.0
-    vol_diff = abs(vol_pct - ideal_vol)
-    # If vol_diff is 0 → 100, if vol_diff is 4 or more → 0
-    vol_score = int(round(clamp(100.0 - (vol_diff / 4.0) * 100.0, 0.0, 100.0)))
-
-    # Overall score: weighted average
-    overall_score = int(
-        round(
-            0.4 * trend_score
-            + 0.25 * five_score
-            + 0.2 * today_score
-            + 0.15 * vol_score
-        )
+# ----------------- Sidebar -----------------
+with st.sidebar:
+    st.markdown("### 📈 Friendly Ticker")
+    st.markdown(
+        "<p style='font-size:0.85rem;color:#9CA3AF;'>Beginner-friendly momentum signals for U.S. stocks. "
+        "Not financial advice — built for education & practice.</p>",
+        unsafe_allow_html=True,
     )
 
+    st.markdown("---")
+    st.markdown("#### ⚙️ Signal settings")
+
+    sensitivity = st.slider(
+        "Signal sensitivity (Bullish vs Bearish)",
+        min_value=1,
+        max_value=5,
+        value=3,
+        help="Higher = stricter Bullish/Bearish labels. Lower = more signals.",
+    )
+
+    st.markdown("#### ⏱️ Lookback windows")
+    win_1d = 1
+    win_5d = 5
+    win_20d = 20
+    st.caption("Currently using 1-day, 5-day, and 20-day performance windows.")
+
+    st.markdown("---")
+    st.markdown("#### 🔒 Premium (concept)")
+    st.caption(
+        "Future upgrades could include AI-powered breakdowns, watchlists, email alerts, "
+        "and simple backtesting. For now everything here is free while we learn."
+    )
+
+# ----------------- Helper functions -----------------
+def simple_label(value: float, bull_thr: float, bear_thr: float) -> str:
+    if value >= bull_thr:
+        return "Bullish"
+    if value <= bear_thr:
+        return "Bearish"
+    return "Neutral"
+
+
+def label_to_emoji(label: str) -> str:
+    if label == "Bullish":
+        return "🟢"
+    if label == "Bearish":
+        return "🔴"
+    return "⚪"
+
+
+def compute_signal(
+    ticker: str,
+    hist: pd.DataFrame,
+    sensitivity: int,
+):
+    # Need at least 21 trading days
+    if len(hist) < 21:
+        return {
+            "ticker": ticker.upper(),
+            "score": None,
+            "label": "No data",
+            "emoji": "⚪",
+            "today_change": None,
+            "five_day_change": None,
+            "trend_20": None,
+            "vol_factor": None,
+            "explanation": "Not enough recent data to compute a signal."
+        }
+
+    hist = hist.sort_index()
+    close = hist["Close"]
+
+    today_change = (close.iloc[-1] / close.iloc[-2] - 1) * 100
+    five_day_change = (close.iloc[-1] / close.iloc[-6] - 1) * 100
+    trend_20 = (close.iloc[-1] / close.iloc[-21] - 1) * 100
+
+    # volatility: recent std / long std
+    recent_vol = hist["Close"].pct_change().iloc[-10:].std()
+    long_vol = hist["Close"].pct_change().std()
+    vol_factor = float(recent_vol / long_vol) if long_vol and not pd.isna(long_vol) else 1.0
+
+    # dynamic thresholds based on sensitivity
+    # sensitivity 1 -> easiest to get Bullish/Bearish
+    # sensitivity 5 -> hardest (needs stronger moves)
+    base_bull_1d = 0.4 + 0.3 * (sensitivity - 3)
+    base_bear_1d = -0.4 - 0.3 * (sensitivity - 3)
+
+    base_bull_5d = 1.5 + 0.6 * (sensitivity - 3)
+    base_bear_5d = -1.5 - 0.6 * (sensitivity - 3)
+
+    base_bull_20d = 4.0 + 1.5 * (sensitivity - 3)
+    base_bear_20d = -4.0 - 1.5 * (sensitivity - 3)
+
+    score = 50  # neutral anchor
+
+    if today_change > base_bull_1d:
+        score += 8
+    elif today_change < base_bear_1d:
+        score -= 8
+
+    if five_day_change > base_bull_5d:
+        score += 16
+    elif five_day_change < base_bear_5d:
+        score -= 16
+
+    if trend_20 > base_bull_20d:
+        score += 26
+    elif trend_20 < base_bear_20d:
+        score -= 26
+
+    if vol_factor > 1.5:
+        score -= 8
+    elif vol_factor < 0.7:
+        score += 6
+
+    score = max(0, min(100, int(round(score))))
+
+    bull_cut = 60 + 2 * (sensitivity - 3)
+    bear_cut = 40 - 2 * (sensitivity - 3)
+
+    label = simple_label(score, bull_cut, bear_cut)
+    emoji = label_to_emoji(label)
+
+    parts = []
+    if label == "Bullish":
+        parts.append("Short- and medium-term momentum tilt positive.")
+    elif label == "Bearish":
+        parts.append("Price action has leaned negative over recent weeks.")
+    else:
+        parts.append("Mixed signals — momentum is neither strongly up nor down.")
+
+    if today_change > 0.5:
+        parts.append(f"Up {today_change:.1f}% today.")
+    elif today_change < -0.5:
+        parts.append(f"Down {today_change:.1f}% today.")
+
+    if five_day_change > 2:
+        parts.append(f"Strong 5-day move of {five_day_change:.1f}%.")
+    elif five_day_change < -2:
+        parts.append(f"5-day drop of {five_day_change:.1f}%.")
+
+    if trend_20 > 5:
+        parts.append("20-day trend is firmly positive.")
+    elif trend_20 < -5:
+        parts.append("20-day trend is firmly negative.")
+
+    if vol_factor > 1.5:
+        parts.append("Volatility is elevated vs normal — expect bigger swings.")
+    elif vol_factor < 0.7:
+        parts.append("Volatility is calmer than usual.")
+
+    explanation = " ".join(parts)
+
     return {
-        "price": float(last),
-        "today_change_pct": float(today_change_pct),
-        "five_day_change_pct": float(five_day_change_pct),
-        "trend_20_pct": float(trend_20_pct),
-        "vol_pct": float(vol_pct),
-        "today_score": today_score,
-        "five_score": five_score,
-        "trend_score": trend_score,
-        "vol_score": vol_score,
-        "overall_score": overall_score,
+        "ticker": ticker.upper(),
+        "score": score,
+        "label": label,
+        "emoji": emoji,
+        "today_change": today_change,
+        "five_day_change": five_day_change,
+        "trend_20": trend_20,
+        "vol_factor": vol_factor,
+        "explanation": explanation,
     }
 
 
-def beginner_summary(ticker: str, s: dict) -> str:
-    """Plain-English explanation for beginners based on the scores."""
-    direction = label_from_score(s["overall_score"])
+# ----------------- Layout: hero + input -----------------
+hero_col, help_col = st.columns([1.6, 1.1])
 
-    # Direction fragment
-    if s["overall_score"] >= 70:
-        dir_text = (
-            f"{ticker} has been in a **strong overall uptrend** recently. "
-            "Both the short-term and 20-day trend look healthy."
-        )
-    elif s["overall_score"] >= 40:
-        dir_text = (
-            f"{ticker} is **moving more sideways** right now. "
-            "Some days are up, some are down, and there isn't a super clear direction yet."
-        )
-    else:
-        dir_text = (
-            f"{ticker} has been **weak or trending down** lately. "
-            "Recent price action has leaned more negative than positive."
-        )
-
-    # Volatility fragment
-    if s["vol_pct"] < 1.2:
-        vol_text = (
-            "The stock's daily moves are usually **small**, which can feel calmer for beginners."
-        )
-    elif s["vol_pct"] < 2.5:
-        vol_text = (
-            "The day-to-day moves are **normal-sized** — not too calm, not too wild."
-        )
-    else:
-        vol_text = (
-            "Price swings are **pretty large**, so it's normal to see sharp up and down days. "
-            "Beginners should be ready for bigger moves."
-        )
-
-    # Today fragment
-    if s["today_change_pct"] > 0.8:
-        today_text = "Today is a **solid green day**, which adds to the bullish side."
-    elif s["today_change_pct"] < -0.8:
-        today_text = "Today is a **red day**, which pulls the short-term mood down a bit."
-    else:
-        today_text = "Today is fairly **flat**, so the bigger trend matters more than just today."
-
-    return (
-        f"{direction}  \n\n"
-        f"{dir_text}  \n\n"
-        f"{vol_text}  \n\n"
-        f"{today_text}  \n\n"
-        "This is **not financial advice** — it just describes how the price has been behaving lately in simple terms."
+with hero_col:
+    st.markdown(
+        """
+        <div class="hero-card">
+            <div class="pill">
+                <span class="badge">NEW</span>
+                <span>Beginner-friendly stock signals · Educational only</span>
+            </div>
+            <h1 class="friendly-hero-title">See Bullish, Bearish, or Neutral in seconds.</h1>
+            <p class="friendly-hero-sub">
+                Friendly Ticker combines short-term price moves, 5-day action, 20-day trend, and volatility
+                into one simple momentum score — so new investors can practice reading market noise.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
+with help_col:
+    st.markdown(
+        """
+        <div class="hero-card" style="padding:0.95rem 1.05rem;">
+            <p style="font-size:0.8rem;color:#9CA3AF;margin-bottom:0.35rem;">HOW IT WORKS</p>
+            <ul style="font-size:0.8rem;color:#E5E7EB;padding-left:1.1rem;">
+                <li>Type 1–10 tickers (e.g., AAPL, TSLA, NVDA)</li>
+                <li>We pull recent price history from Yahoo Finance</li>
+                <li>We score short, medium, and 20-day momentum</li>
+                <li>You get Bullish / Neutral / Bearish labels + a score</li>
+            </ul>
+            <p style="font-size:0.75rem;color:#6B7280;margin-top:0.35rem;">
+                This tool is for learning, not for trading decisions.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# ---------- UI: Input ----------
-tickers_input = st.text_input(
-    "Stock symbol (or multiple, separated by commas)",
-    "AAPL",
-    help="Type one or more tickers like AAPL, TSLA, NVDA",
-)
+st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
 
-analyze_clicked = st.button("Analyze")
+with st.container():
+    st.markdown('<div class="input-card">', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:0.85rem;color:#9CA3AF;margin-bottom:0.25rem;'>"
+        "Tickers to analyze</div>",
+        unsafe_allow_html=True,
+    )
+    tickers_input = st.text_input(
+        "",
+        value="AAPL, TSLA, NVDA",
+        placeholder="e.g. AAPL, TSLA, NVDA, MSFT",
+        help="Separate tickers with commas or spaces.",
+    )
+    st.markdown(
+        "<div class='help-text'>We analyze U.S. stocks via Yahoo Finance. "
+        "Crypto and some OTC tickers may not return data.</div>",
+        unsafe_allow_html=True,
+    )
 
-if analyze_clicked:
-    cleaned = tickers_input.upper().replace(" ", "")
-    log_event("analyze", cleaned)
-    tickers = [t for t in cleaned.split(",") if t]
-
-    if not tickers:
-        st.warning("Please enter at least one valid ticker symbol.")
-    else:
-        all_results = {}
-        for t in tickers:
-            try:
-                df = yf.Ticker(t).history(period="6mo")
-                scores = compute_scores(df)
-                all_results[t] = scores
-            except Exception:
-                all_results[t] = None
-        st.session_state["results"] = all_results
-
-results = st.session_state.get("results")
-
-# ---------- UI: Results ----------
-if results:
-    for ticker, scores in results.items():
-        st.markdown("---")
-        st.subheader(f"📈 {ticker}")
-        if scores is None:
-            st.write(
-                "Couldn't load enough data for this symbol. It might be invalid or too new."
-            )
-            continue
-
-        overall = scores["overall_score"]
-        today_pct = scores["today_change_pct"]
-        five_pct = scores["five_day_change_pct"]
-        trend20 = scores["trend_20_pct"]
-        vol_pct = scores["vol_pct"]
-
-        # Overall trend block
-        st.markdown("### Overall Trend (for beginners)")
-        col_main, col_label = st.columns([3, 2])
-        with col_main:
-            st.metric(
-                label="Trend Score (0–100)",
-                value=f"{overall}",
-            )
-            st.progress(overall / 100.0)
-        with col_label:
-            st.write("**Signal:**", label_from_score(overall))
-            st.write("**Risk:**", risk_label_from_vol(vol_pct))
-
-        # Key numbers
-        st.markdown("### Key Recent Moves")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric(
-                label="Today",
-                value=f"{today_pct:+.2f}%",
-            )
-        with c2:
-            st.metric(
-                label="Last 5 trading days",
-                value=f"{five_pct:+.2f}%",
-            )
-        with c3:
-            st.metric(
-                label="20-day vs average",
-                value=f"{trend20:+.2f}%",
-            )
-
-        st.caption(
-            "Positive percentages mean the stock has gone up over that time. Negative means it has gone down."
+    col_btn, col_hint = st.columns([0.25, 0.75])
+    with col_btn:
+        run = st.button("Analyze tickers")
+    with col_hint:
+        st.markdown(
+            "<div class='help-text'>Example: <code>AAPL, MSFT, META, SOXL</code></div>",
+            unsafe_allow_html=True,
         )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        # Beginner summary
-        st.markdown("### Beginner-Friendly Summary")
-        st.write(beginner_summary(ticker, scores))
+st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
+# ----------------- Main logic -----------------
+results = []
 
+if run:
+    cleaned = [t.strip().upper() for t in tickers_input.replace(";", ",").replace(" ", ",").split(",") if t.strip()]
+    cleaned = list(dict.fromkeys(cleaned))  # de-dupe
 
+    if not cleaned:
+        st.warning("Please enter at least one ticker symbol (like AAPL or TSLA).")
+    else:
+        with st.spinner("Fetching price history and computing signals..."):
+            end = datetime.today()
+            start = end - timedelta(days=60)
+
+            for ticker in cleaned:
+                try:
+                    hist = yf.download(ticker, start=start, end=end, progress=False)
+                    if hist.empty:
+                        results.append(
+                            {
+                                "ticker": ticker.upper(),
+                                "score": None,
+                                "label": "No data",
+                                "emoji": "⚪",
+                                "today_change": None,
+                                "five_day_change": None,
+                                "trend_20": None,
+                                "vol_factor": None,
+                                "explanation": "No recent price history found for this symbol.",
+                            }
+                        )
+                    else:
+                        res = compute_signal(ticker, hist, sensitivity=sensitivity)
+                        results.append(res)
+                except Exception as e:
+                    results.append(
+                        {
+                            "ticker": ticker.upper(),
+                            "score": None,
+                            "label": "Error",
+                            "emoji": "⚪",
+                            "today_change": None,
+                            "five_day_change": None,
+                            "trend_20": None,
+                            "vol_factor": None,
+                            "explanation": f"Something went wrong fetching data: {e}",
+                        }
+                    )
+
+if results:
+    st.markdown("### 🔍 Results overview")
+
+    df_rows = []
+    for r in results:
+        df_rows.append(
+            {
+                "Ticker": r["ticker"],
+                "Score (0-100)": r["score"],
+                "Label": r["label"],
+                "Today %": None if r["today_change"] is None else round(r["today_change"], 2),
+                "5-day %": None if r["five_day_change"] is None else round(r["five_day_change"], 2),
+                "20-day %": None if r["trend_20"] is None else round(r["trend_20"], 2),
+                "Vol vs normal": None if r["vol_factor"] is None else round(r["vol_factor"], 2),
+            }
+        )
+    df = pd.DataFrame(df_rows)
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
+    st.markdown("#### 🧠 Ticker breakdowns")
+
+    left_col, right_col = st.columns(2)
+
+    for idx, r in enumerate(results):
+        col = left_col if idx % 2 == 0 else right_col
+        with col:
+            st.markdown('<div class="result-card">', unsafe_allow_html=True)
+
+            if r["label"] == "Bullish":
+                badge_class = "bull-pill"
+                badge_text = "Bullish"
+            elif r["label"] == "Bearish":
+                badge_class = "bear-pill"
+                badge_text = "Bearish"
+            elif r["label"] == "Neutral":
+                badge_class = "neutral-pill"
+                badge_text = "Neutral"
+            else:
+                badge_class = "neutral-pill"
+                badge_text = r["label"]
+
+            st.markdown(
+                f"""
+                <div class="ticker-header">
+                    <div>
+                        <div class="ticker-main">{r["emoji"]} {r["ticker"]}</div>
+                        <div class="ticker-sub">Simple momentum snapshot from recent price action.</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="score-label">Score</div>
+                        <div class="score-badge {badge_class}">
+                            <span>{r.get("score", "–") if r.get("score") is not None else "–"}</span>
+                            <span style="font-size:0.75rem;">/ 100</span>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if r["today_change"] is None:
+                st.markdown(
+                    f"<div class='explanation'>{r['explanation']}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                metric_bits = []
+                metric_bits.append(f"Today: {r['today_change']:+.2f}%")
+                metric_bits.append(f"5-day: {r['five_day_change']:+.2f}%")
+                metric_bits.append(f"20-day: {r['trend_20']:+.2f}%")
+                metric_bits.append(f"Volatility: {r['vol_factor']:.2f}× normal")
+
+                st.markdown(
+                    "<div class='metric-grid'>" +
+                    "".join([f"<div class='metric-pill'>{m}</div>" for m in metric_bits]) +
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown(
+                    f"<div class='explanation'>{r['explanation']}</div>",
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("---")
+st.markdown(
+    "<p style='font-size:0.75rem;color:#6B7280;'>Friendly Ticker is an educational demo. "
+    "Scores and labels are <strong>not</strong> investment advice. "
+    "Always do your own research and consider talking with a qualified financial professional.</p>",
+    unsafe_allow_html=True,
+)
 
 
 
