@@ -18,6 +18,10 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+st.write(
+    "Type a stock symbol like **AAPL**, **TSLA**, or **NVDA** and Friendly Ticker will show you an easy, beginner-friendly view "
+    "of its trend, risk, and recent moves."
+)
 
 
 # ---------- Session state ----------
@@ -274,6 +278,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
