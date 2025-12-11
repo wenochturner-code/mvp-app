@@ -7,8 +7,6 @@ from datetime import datetime
 st.set_page_config(page_title="Friendly Ticker", page_icon="📊")
 st.title("📊 Friendly Ticker")
 
-
-st.title("📊 Beginner Stock Explainer (V2.5)")
 st.write(
     "Type a stock symbol like **AAPL**, **TSLA**, or **NVDA** and Friendly Ticker will instantly explain the trend, "
     "risk level, and recent movement in simple, beginner-friendly language. No charts. No jargon."
@@ -268,4 +266,5 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
