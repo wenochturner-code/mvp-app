@@ -7,36 +7,37 @@ from datetime import datetime
 st.markdown(
     """
     <div style="
-        padding: 2.5rem 2.5rem;
-        background-color: #F8FAFC;
-        border-radius: 1.5rem;
-        margin: 2rem auto 2.5rem auto;
-        max-width: 900px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        padding: 3rem 2.5rem;
+        background-color: #F2F4F7;
+        border-radius: 1.75rem;
+        margin: 3rem auto 3rem auto;
+        max-width: 950px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.06);
         text-align: center;
     ">
 
       <h1 style="
-          margin-bottom: 0.75rem;
-          font-size: 2.8rem;
+          margin-bottom: 1rem;
+          font-size: 3rem;
           font-weight: 700;
           display: flex;
           justify-content: center;
           align-items: center;
-          gap: 0.75rem;
-          letter-spacing: -0.5px;
+          gap: 1rem;
+          letter-spacing: -0.7px;
       ">
-        <span style="font-size: 2.6rem; color: #4CAF50; line-height: 1;">➚</span>
+        <span style="font-size: 2.8rem; color: #4CAF50; line-height: 1;">➚</span>
         Friendly Ticker
       </h1>
 
       <p style="
           margin: 0;
-          font-size: 1.2rem;
-          color: #4B5563;
-          max-width: 700px;
+          font-size: 1.25rem;
+          color: #374151;
+          max-width: 720px;
           margin-left: auto;
           margin-right: auto;
+          line-height: 1.6;
       ">
         Understand any stock in plain English. Type a ticker and get a simple trend score,
         risk level, and beginner-friendly explanation. No charts. No jargon.
@@ -46,6 +47,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 
 
 # ---------- Session state ----------
@@ -302,6 +304,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
