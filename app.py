@@ -150,11 +150,17 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
     rsi_14 = compute_rsi(close, period=14)
 
     # Volume spike: today's volume vs 20-day average
-    if len(volume) >= 21:
-        vol_avg = volume.iloc[-21:-1].mean()
-        vol_spike = float(volume.iloc[-1] / vol_avg) if vol_avg > 0 else np.nan
-    else:
+if len(volume) >= 21:
+    # force everything to plain floats so pandas can't be weird
+    vol_avg = float(volume.iloc[-21:-1].mean())
+    last_vol = float(volume.iloc[-1])
+
+    if np.isnan(vol_avg) or vol_avg <= 0:
         vol_spike = np.nan
+    else:
+        vol_spike = last_vol / vol_avg
+else:
+    vol_spike = np.nan
 
     # SMA crossover
     sma_20 = close.rolling(20).mean().iloc[-1]
@@ -437,6 +443,7 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
+
 
 
 
