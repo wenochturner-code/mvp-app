@@ -6,11 +6,18 @@ from datetime import datetime
 # ---------- Page config ----------
 st.markdown(
     """
-    <div style="padding: 1.5rem 1rem; background-color: #F3F4F6; border-radius: 1rem; margin-bottom: 1.5rem;">
-      <h1 style="margin-bottom: 0.25rem; font-size: 2rem;">
-        <span style="color:#4CAF50;">➚</span> Friendly Ticker
+    <div style="
+        padding: 2rem 2rem;
+        background-color: #F3F4F6;
+        border-radius: 1.25rem;
+        margin: 0 auto 2rem auto;
+        max-width: 800px;
+    ">
+      <h1 style="margin-bottom: 0.25rem; font-size: 2.4rem; display:flex; align-items:center; gap:0.5rem;">
+        <span style="font-size:2.2rem; color:#4CAF50;">➚</span>
+        Friendly Ticker
       </h1>
-      <p style="margin: 0; font-size: 1.05rem; color: #4B5563;">
+      <p style="margin: 0; font-size: 1.15rem; color: #4B5563;">
         Understand any stock in plain English. Type a ticker and get a simple trend score,
         risk level, and beginner-friendly explanation. No charts. No jargon.
       </p>
@@ -18,11 +25,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.write(
-    "Type a stock symbol like **AAPL**, **TSLA**, or **NVDA** and Friendly Ticker will show you an easy, beginner-friendly view "
-    "of its trend, risk, and recent moves."
-)
-
 
 # ---------- Session state ----------
 if "results" not in st.session_state:
@@ -278,6 +280,7 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
 
