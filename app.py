@@ -3,112 +3,183 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
-# ----------------- Page config & basic theming -----------------
+# ----------------- Page config & brand colors -----------------
 st.set_page_config(
     page_title="Friendly Ticker • Beginner Stock Analyzer",
     page_icon="📈",
     layout="wide"
 )
 
-PRIMARY = "#2563EB"   # blue
-ACCENT = "#22C55E"    # green
-DANGER = "#EF4444"    # red
-MUTED = "#6B7280"     # gray
-BG_SOFT = "#0B1120"   # dark navy
-CARD_BG = "#020617"   # slightly darker
+PRIMARY = "#2563EB"   # Friendly blue
+ACCENT = "#22C55E"    # Mint green
+WARNING = "#F97316"   # Soft orange
+TEXT_MAIN = "#F9FAFB"
+TEXT_MUTED = "#9CA3AF"
+SURFACE = "#020617"
+SURFACE_SOFT = "#0B1120"
 
 custom_css = f"""
 <style>
+    /* --- Global layout / background --- */
     .main {{
-        background: radial-gradient(circle at top left, #0f172a 0, #020617 50%, #000 100%);
-        color: #e5e7eb;
+        background: radial-gradient(circle at top left, #0b1120 0, #020617 50%, #020617 100%);
+        color: {TEXT_MAIN};
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
     }}
+
     section[data-testid="stSidebar"] {{
         background-color: #020617;
         border-right: 1px solid #111827;
     }}
+
+    /* --- Brand / hero --- */
+    .friendly-logo {{
+        display:flex;
+        align-items:center;
+        gap:0.45rem;
+        font-weight:700;
+        letter-spacing:-0.03em;
+        font-size:1rem;
+        color:{TEXT_MAIN};
+    }}
+    .friendly-logo-mark {{
+        width:1.7rem;
+        height:1.7rem;
+        border-radius:0.6rem;
+        background:linear-gradient(135deg,{PRIMARY}, {ACCENT});
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:1.05rem;
+        box-shadow:0 8px 18px rgba(15,23,42,0.8);
+    }}
+
     .friendly-hero-title {{
-        font-size: 2.2rem;
-        font-weight: 750;
+        font-size: 2.25rem;
+        font-weight: 800;
         letter-spacing: -0.04em;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.35rem;
+        color:{TEXT_MAIN};
     }}
     .friendly-hero-sub {{
-        font-size: 1rem;
-        color: #9CA3AF;
-        margin-bottom: 0.75rem;
+        font-size: 0.98rem;
+        color: {TEXT_MUTED};
+        margin-bottom: 0.7rem;
     }}
+
     .pill {{
         display:inline-flex;
         align-items:center;
         gap:0.4rem;
-        padding:0.2rem 0.65rem;
+        padding:0.2rem 0.7rem;
         border-radius:999px;
-        border:1px solid rgba(148,163,184,0.6);
-        background:rgba(15,23,42,0.8);
-        font-size:0.8rem;
-        color:#E5E7EB;
+        border:1px solid rgba(148,163,184,0.55);
+        background:rgba(15,23,42,0.96);
+        font-size:0.78rem;
+        color:{TEXT_MAIN};
     }}
     .pill span.badge {{
-        padding:0.1rem 0.45rem;
+        padding:0.05rem 0.5rem;
         border-radius:999px;
         font-size:0.7rem;
         font-weight:600;
-        background:rgba(37,99,235,0.15);
+        background:rgba(37,99,235,0.2);
         color:{PRIMARY};
     }}
+
     .hero-card {{
+        border-radius: 1.35rem;
+        padding: 1.4rem 1.6rem;
+        border: 1px solid rgba(148,163,184,0.25);
+        background: linear-gradient(135deg, #020617 0%, #020617 35%, #020617 100%);
+        box-shadow: 0 18px 40px rgba(15,23,42,0.85);
+    }}
+
+    .hero-side-card {{
         border-radius: 1.2rem;
-        padding: 1.3rem 1.4rem;
-        border: 1px solid rgba(148,163,184,0.35);
-        background: radial-gradient(circle at top left, rgba(37,99,235,0.14), rgba(15,23,42,0.96));
-        box-shadow: 0 18px 45px rgba(15,23,42,0.7);
+        padding: 1.05rem 1.25rem;
+        border: 1px solid rgba(148,163,184,0.25);
+        background: rgba(15,23,42,0.98);
+        box-shadow: 0 14px 35px rgba(15,23,42,0.8);
     }}
+
+    /* --- Input area --- */
     .input-card {{
-        border-radius: 1rem;
-        padding: 0.9rem 1rem 0.4rem 1rem;
-        border: 1px solid rgba(55,65,81,0.8);
-        background: rgba(15,23,42,0.9);
-        margin-top:0.6rem;
-        margin-bottom:0.4rem;
-    }}
-    .metric-pill {{
-        border-radius:999px;
-        padding:0.15rem 0.65rem;
-        font-size:0.75rem;
-        border:1px solid rgba(75,85,99,0.8);
-        color:#E5E7EB;
-    }}
-    .metric-grid {{
-        display:flex;
-        flex-wrap:wrap;
-        gap:0.4rem;
-        margin-top:0.35rem;
-    }}
-    .result-card {{
         border-radius: 1.1rem;
-        padding: 0.9rem 1rem;
-        border: 1px solid rgba(55,65,81,0.85);
-        background: linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96));
-        margin-bottom: 0.65rem;
+        padding: 1.0rem 1.1rem 0.6rem 1.1rem;
+        border: 1px solid rgba(55,65,81,0.8);
+        background: rgba(15,23,42,0.97);
+        margin-top:0.7rem;
+        margin-bottom:0.5rem;
     }}
+
+    .stTextInput>div>div>input {{
+        background-color: #020617;
+        border-radius: 0.7rem;
+        border: 1px solid #374151;
+        color: {TEXT_MAIN};
+        font-size:0.9rem;
+    }}
+    .stTextInput>div>div>input::placeholder {{
+        color:#6B7280;
+    }}
+
+    .help-text {{
+        font-size:0.78rem;
+        color:{TEXT_MUTED};
+        margin-top:0.12rem;
+    }}
+
+    /* --- Buttons --- */
+    .stButton>button {{
+        border-radius: 999px;
+        border: 1px solid rgba(37,99,235,0.9);
+        background: linear-gradient(135deg, {PRIMARY}, #1D4ED8);
+        color: white;
+        font-weight:600;
+        padding:0.4rem 1.5rem;
+        font-size:0.9rem;
+        box-shadow:0 10px 25px rgba(37,99,235,0.35);
+    }}
+    .stButton>button:hover {{
+        border-color:#60A5FA;
+        background: linear-gradient(135deg, #1D4ED8, #1E3A8A);
+        box-shadow:0 12px 28px rgba(37,99,235,0.45);
+    }}
+
+    /* --- Result cards --- */
+    .result-card {{
+        border-radius: 1.05rem;
+        padding: 0.9rem 1.0rem;
+        border: 1px solid rgba(55,65,81,0.85);
+        background: linear-gradient(135deg, #020617, #020617);
+        margin-bottom: 0.6rem;
+        box-shadow:0 10px 28px rgba(15,23,42,0.9);
+    }}
+
     .ticker-header {{
         display:flex;
         justify-content:space-between;
         align-items:flex-start;
-        gap:0.6rem;
-        margin-bottom:0.25rem;
+        gap:0.65rem;
+        margin-bottom:0.2rem;
     }}
     .ticker-main {{
         font-size:1.05rem;
-        font-weight:650;
+        font-weight:700;
         letter-spacing:0.03em;
+        color:{TEXT_MAIN};
     }}
     .ticker-sub {{
         font-size:0.78rem;
-        color:#9CA3AF;
+        color:{TEXT_MUTED};
     }}
+
+    .score-label {{
+        font-size:0.75rem;
+        color:{TEXT_MUTED};
+    }}
+
     .score-badge {{
         border-radius:999px;
         padding:0.15rem 0.7rem;
@@ -118,56 +189,52 @@ custom_css = f"""
         align-items:center;
         gap:0.25rem;
     }}
-    .score-label {{
-        font-size:0.77rem;
-        color:#9CA3AF;
+
+    .metric-grid {{
+        display:flex;
+        flex-wrap:wrap;
+        gap:0.35rem;
+        margin-top:0.35rem;
     }}
+    .metric-pill {{
+        border-radius:999px;
+        padding:0.18rem 0.7rem;
+        font-size:0.75rem;
+        border:1px solid rgba(75,85,99,0.9);
+        background:rgba(30,41,59,0.95);
+        color:{TEXT_MAIN};
+    }}
+
     .explanation {{
         font-size:0.8rem;
-        color:#D1D5DB;
+        color:{TEXT_MAIN};
         margin-top:0.25rem;
     }}
-    .help-text {{
-        font-size:0.75rem;
-        color:#9CA3AF;
-        margin-top:0.15rem;
-    }}
-    .stTextInput>div>div>input {{
-        background-color: #020617;
-        border-radius: 0.7rem;
-        border: 1px solid #374151;
-        color: #E5E7EB;
-        font-size:0.9rem;
-    }}
-    .stButton>button {{
-        border-radius: 999px;
-        border: 1px solid rgba(37,99,235,0.8);
-        background: linear-gradient(135deg, {PRIMARY}, #1D4ED8);
-        color: white;
-        font-weight:600;
-        padding:0.35rem 1.3rem;
-        font-size:0.9rem;
-    }}
-    .stButton>button:hover {{
-        border-color:#60A5FA;
-        background: linear-gradient(135deg, #1D4ED8, #1E3A8A);
-    }}
+
     .neutral-pill {{
-        background:rgba(55,65,81,0.5);
-        border:1px solid rgba(55,65,81,0.9);
+        background:rgba(55,65,81,0.9);
+        border:1px solid rgba(75,85,99,1);
+        color:{TEXT_MAIN};
     }}
     .bull-pill {{
         background:rgba(22,163,74,0.16);
-        border:1px solid rgba(34,197,94,0.9);
+        border:1px solid rgba(34,197,94,0.95);
         color:#BBF7D0;
     }}
     .bear-pill {{
         background:rgba(220,38,38,0.16);
-        border:1px solid rgba(248,113,113,0.9);
+        border:1px solid rgba(248,113,113,0.95);
         color:#FECACA;
+    }}
+
+    /* --- Dataframe tweaks --- */
+    .stDataFrame div[data-testid="stTable"] {{
+        border-radius:0.8rem;
+        overflow:hidden;
     }}
 </style>
 """
+
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ----------------- Sidebar -----------------
@@ -557,6 +624,7 @@ st.markdown(
     "Always do your own research and consider talking with a qualified financial professional.</p>",
     unsafe_allow_html=True,
 )
+
 
 
 
