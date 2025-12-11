@@ -162,9 +162,17 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
     else:
         vol_spike = float("nan")
 
-    # SMA crossover
-    sma_20 = close.rolling(20).mean().iloc[-1]
-    sma_50 = close.rolling(50).mean().iloc[-1] if len(close) >= 50 else float("nan")
+        # SMA crossover
+    if len(close) >= 20:
+        sma_20 = float(close.rolling(20).mean().iloc[-1])
+    else:
+        sma_20 = float("nan")
+
+    if len(close) >= 50:
+        sma_50 = float(close.rolling(50).mean().iloc[-1])
+    else:
+        sma_50 = float("nan")
+
     if not np.isnan(sma_20) and not np.isnan(sma_50):
         if sma_20 > sma_50:
             sma_crossover = "Bullish (20 > 50)"
@@ -481,6 +489,7 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
+
 
 
 
