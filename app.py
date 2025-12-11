@@ -114,65 +114,46 @@ def fetch_price_data(ticker: str, period: str = "3mo") -> pd.DataFrame:
 
 
 def compute_indicators_for_ticker(ticker: str) -> dict:
-    """
-    Returns a dict with:
-    - today_change, five_day_change, trend_20
-    - rsi_14, volume_spike, sma_20, sma_50, sma_crossover
-    - overall_score, label, explanation
-    """
     data = fetch_price_data(ticker)
     if data.empty or len(data) < 30:
         return {"error": "Not enough data"}
 
-    close = data["Close"]
-    volume = data["Volume"]
+    close = data["Close"].astype(float)
+    volume = data["Volume"].astype(float)
 
-    # Today vs previous close
+    # Today % change
     today_change = safe_pct_change(close.iloc[-1], close.iloc[-2])
 
-    # 5-day change
-    if len(close) >= 6:
-        five_day_change = safe_pct_change(close.iloc[-1], close.iloc[-6])
-    else:
-        five_day_change = float("nan")
+    # 5-day % change
+    five_day_change = (
+        safe_pct_change(close.iloc[-1], close.iloc[-6]) if len(close) >= 6 else np.nan
+    )
 
-    # 20-day trend via linear regression on last 20 closes
+    # 20-day regression trend
     if len(close) >= 20:
         recent_20 = close.iloc[-20:]
         x = np.arange(len(recent_20))
         slope, _ = np.polyfit(x, recent_20.values, 1)
-        # normalize slope to % over 20 days
-        trend_20 = (slope * 20 / recent_20.iloc[-1]) * 100.0
+        trend_20 = (slope * 20 / recent_20.iloc[-1]) * 100
     else:
-        trend_20 = float("nan")
+        trend_20 = np.nan
 
-    # RSI(14)
+    # RSI
     rsi_14 = compute_rsi(close, period=14)
 
-    # Volume spike: today's volume vs 20-day average
+    # Volume spike
     if len(volume) >= 21:
-        # force everything to plain floats so pandas can't be weird
         vol_avg = float(volume.iloc[-21:-1].mean())
         last_vol = float(volume.iloc[-1])
-
-        if np.isnan(vol_avg) or vol_avg <= 0:
-            vol_spike = float("nan")
-        else:
-            vol_spike = last_vol / vol_avg
+        vol_spike = last_vol / vol_avg if vol_avg > 0 else np.nan
     else:
-        vol_spike = float("nan")
+        vol_spike = np.nan
 
-        # SMA crossover
-    if len(close) >= 20:
-        sma_20 = float(close.rolling(20).mean().iloc[-1])
-    else:
-        sma_20 = float("nan")
+    # SMA 20 / SMA 50
+    sma_20 = float(close.rolling(20).mean().iloc[-1]) if len(close) >= 20 else np.nan
+    sma_50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else np.nan
 
-    if len(close) >= 50:
-        sma_50 = float(close.rolling(50).mean().iloc[-1])
-    else:
-        sma_50 = float("nan")
-
+    # Crossover analysis
     if not np.isnan(sma_20) and not np.isnan(sma_50):
         if sma_20 > sma_50:
             sma_crossover = "Bullish (20 > 50)"
@@ -183,63 +164,62 @@ def compute_indicators_for_ticker(ticker: str) -> dict:
     else:
         sma_crossover = "Not enough data"
 
-    # ----------------- SCORING MODEL -----------------
-    # Normalize each factor into 0–100, then average with weights
-    # These thresholds are intentionally moderate so not everything is "Neutral".
+    # Convert all to floats so scoring never errors
+    today_change = to_float(today_change)
+    five_day_change = to_float(five_day_change)
+    trend_20 = to_float(trend_20)
+    rsi_14 = to_float(rsi_14)
+    vol_spike = to_float(vol_spike)
 
-    def clamp(x, lo, hi):
-        return max(lo, min(hi, x))
+    # --- Scoring model ---
+    def clamp(x, lo, hi): return max(lo, min(hi, x))
 
-    # Today change: -4% to +4% → 0–100
-    if not np.isnan(today_change):
-        today_score = clamp((today_change + 4) / 8 * 100, 0, 100)
-    else:
-        today_score = 50
+    today_score = clamp((today_change + 4) / 8 * 100, 0, 100) if not np.isnan(today_change) else 50
+    five_score = clamp((five_day_change + 10) / 20 * 100, 0, 100) if not np.isnan(five_day_change) else 50
+    trend_score = clamp((trend_20 + 15) / 30 * 100, 0, 100) if not np.isnan(trend_20) else 50
 
-    # 5-day change: -10% to +10% → 0–100
-    if not np.isnan(five_day_change):
-        five_score = clamp((five_day_change + 10) / 20 * 100, 0, 100)
-    else:
-        five_score = 50
-
-    # 20-day trend: -15% to +15% → 0–100
-    if not np.isnan(trend_20):
-        trend_score = clamp((trend_20 + 15) / 30 * 100, 0, 100)
-    else:
-        trend_score = 50
-
-    # RSI: classic 30–70 range
     if not np.isnan(rsi_14):
-        if rsi_14 < 30:
-            rsi_score = 70  # oversold – bullish tilt
-        elif rsi_14 > 70:
-            rsi_score = 30  # overbought – bearish tilt
-        else:
-            # map 30–70 to 60–40 (neutral-ish)
-            rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
+        if rsi_14 < 30: rsi_score = 70
+        elif rsi_14 > 70: rsi_score = 30
+        else: rsi_score = 60 - ((rsi_14 - 30) / 40) * 20
     else:
         rsi_score = 50
 
-    # Volume spike: 0.5x–3x → 0–100
-    if not np.isnan(vol_spike):
-        vol_score = clamp((vol_spike - 0.5) / 2.5 * 100, 0, 100)
-    else:
-        vol_score = 50
-
-    # Weights
-    w_today = 0.25
-    w_five = 0.2
-    w_trend = 0.25
-    w_rsi = 0.15
-    w_vol = 0.15
+    vol_score = clamp((vol_spike - 0.5) / 2.5 * 100, 0, 100) if not np.isnan(vol_spike) else 50
 
     overall_score = (
-        today_score * w_today
-        + five_score * w_five
-        + trend_score * w_trend
-        + rsi_score * w_rsi
-        + vol_score * w_vol
+        today_score * 0.25 +
+        five_score * 0.20 +
+        trend_score * 0.25 +
+        rsi_score * 0.15 +
+        vol_score * 0.15
     )
+
+    label = simple_label_from_score(overall_score)
+
+    # Explanation
+    explanation = (
+        f"Today change: **{today_change:.2f}%**; 5-day: **{five_day_change:.2f}%**.  \n"
+        f"20-day trend: **{trend_20:.2f}%**.  \n"
+        f"RSI(14): **{rsi_14:.1f}**.  \n"
+        f"Volume spike: **{vol_spike:.2f}x**.  \n"
+        f"SMA status: **{sma_crossover}**.  \n\n"
+        f"Overall strength: **{overall_score:.1f} / 100** → **{label}**."
+    )
+
+    return {
+        "today_change": today_change,
+        "five_day_change": five_day_change,
+        "trend_20": trend_20,
+        "rsi_14": rsi_14,
+        "vol_spike": vol_spike,
+        "sma_20": sma_20,
+        "sma_50": sma_50,
+        "sma_crossover": sma_crossover,
+        "overall_score": overall_score,
+        "label": label,
+        "explanation": explanation,
+    }
 
     label = simple_label_from_score(overall_score)
 
@@ -489,6 +469,7 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
+
 
 
 
