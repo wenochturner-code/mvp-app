@@ -50,7 +50,18 @@ def compute_rsi(series: pd.Series, period: int = 14) -> float:
     return float(rsi.iloc[-1])
 
 
-def safe_pct_change(a: float, b: float) -> float:
+def safe_pct_change(a, b) -> float:
+    """
+    Safe percentage change that works even if a/b are pandas scalars / arrays.
+    This is what was throwing your ValueError before.
+    """
+    try:
+        # Force to plain floats – avoids "truth value of a Series is ambiguous"
+        a = float(a)
+        b = float(b)
+    except Exception:
+        return np.nan
+
     if b == 0 or np.isnan(a) or np.isnan(b):
         return np.nan
     return (a / b - 1.0) * 100.0
@@ -334,7 +345,7 @@ if page == "Analyzer":
                 "Signal Strength",
                 "Label",
                 "Today %",
-                "5-Day %", 
+                "5-Day %",
                 "20-Day Trend %",
                 "RSI(14)",
                 "Volume Spike (x)",
@@ -351,7 +362,7 @@ elif page == "Analytics":
     if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
         st.info("No usage data yet. Run some analyses on the **Analyzer** page first.")
     else:
-        # Read log file
+        # Read log file – some old rows may be malformed, so be defensive
         df_log = pd.read_csv(
             LOG_FILE,
             sep="|",
@@ -359,39 +370,52 @@ elif page == "Analytics":
             names=["timestamp", "event_type", "tickers"],
         )
 
-        # Basic stats
-        st.markdown("### Overview")
-        total_events = len(df_log)
-        total_analyzes = (df_log["event_type"] == "analyze_clicked").sum()
+        # Drop totally empty rows
+        df_log = df_log.dropna(how="all")
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric("Total logged events", total_events)
-        with col_b:
-            st.metric("Total analyses run", total_analyzes)
+        # ---------- FIX: robust datetime parsing ----------
+        df_log["timestamp"] = pd.to_datetime(
+            df_log["timestamp"], errors="coerce"
+        )
+        df_log = df_log.dropna(subset=["timestamp"])
+        df_log["date"] = df_log["timestamp"].dt.date
 
-        # Events per day
-        df_log["date"] = pd.to_datetime(df_log["timestamp"]).dt.date
-        per_day = df_log.groupby("date").size().reset_index(name="events")
-
-        st.markdown("### Activity Over Time")
-        st.line_chart(per_day.set_index("date"))
-
-        # Most popular tickers
-        def split_tickers(x):
-            if pd.isna(x):
-                return []
-            return [t.strip().upper() for t in x.split(",") if t.strip()]
-
-        exploded = df_log["tickers"].dropna().apply(split_tickers)
-        tickers_flat = [t for sub in exploded for t in sub]
-        if tickers_flat:
-            df_t = pd.Series(tickers_flat).value_counts().reset_index()
-            df_t.columns = ["Ticker", "Count"]
-            st.markdown("### Most Analyzed Tickers")
-            st.bar_chart(df_t.set_index("Ticker"))
+        if df_log.empty:
+            st.info("No valid usage events yet.")
         else:
-            st.info("No tickers recorded yet.")
+            # Basic stats
+            st.markdown("### Overview")
+            total_events = len(df_log)
+            total_analyzes = (df_log["event_type"] == "analyze_clicked").sum()
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("Total logged events", total_events)
+            with col_b:
+                st.metric("Total analyses run", total_analyzes)
+
+            # Events per day
+            per_day = df_log.groupby("date").size().reset_index(name="events")
+
+            st.markdown("### Activity Over Time")
+            st.line_chart(per_day.set_index("date"))
+
+            # Most popular tickers
+            def split_tickers(x):
+                if pd.isna(x):
+                    return []
+                return [t.strip().upper() for t in str(x).split(",") if t.strip()]
+
+            exploded = df_log["tickers"].dropna().apply(split_tickers)
+            tickers_flat = [t for sub in exploded for t in sub]
+            if tickers_flat:
+                df_t = pd.Series(tickers_flat).value_counts().reset_index()
+                df_t.columns = ["Ticker", "Count"]
+                st.markdown("### Most Analyzed Tickers")
+                st.bar_chart(df_t.set_index("Ticker"))
+            else:
+                st.info("No tickers recorded yet.")
+
 
 
 
