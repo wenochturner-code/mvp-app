@@ -37,22 +37,33 @@ def log_event(event_type: str, tickers: str):
 
 
 # ----------------- INDICATOR HELPERS -----------------
-def compute_rsi(series: pd.Series, period: int = 14) -> float:
+def compute_rsi(series, period: int = 14) -> float:
     """
-    Robust RSI(14) that avoids 2D ndarray issues.
+    Robust RSI(14) that:
+    - flattens any input to 1D
+    - handles NaNs safely
     """
-    s = pd.Series(series).dropna()
-    if len(s) < period + 1:
+    # Force to 1D float array
+    arr = np.asarray(series, dtype="float64").reshape(-1)
+
+    # Drop NaNs
+    arr = arr[~np.isnan(arr)]
+
+    if arr.size < period + 1:
         return np.nan
 
-    delta = s.diff()
+    # Price changes
+    delta = np.diff(arr)
 
     # Gains (up moves) and losses (down moves)
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
+    gain = np.clip(delta, 0, None)
+    loss = -np.clip(delta, None, 0)
 
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    gain_s = pd.Series(gain)
+    loss_s = pd.Series(loss)
+
+    avg_gain = gain_s.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss_s.rolling(window=period, min_periods=period).mean()
 
     # Avoid division by zero
     rs = avg_gain / avg_loss.replace(0, np.nan)
@@ -426,6 +437,7 @@ elif page == "Analytics":
                 st.bar_chart(df_t.set_index("Ticker"))
             else:
                 st.info("No tickers recorded yet.")
+
 
 
 
