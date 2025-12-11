@@ -5,11 +5,18 @@ from datetime import datetime
 
 # ---------- Page config ----------
 st.set_page_config(page_title="Friendly Ticker", page_icon="📊")
-st.title("📊 Friendly Ticker")
 
-st.write(
-    "Type a stock symbol like **AAPL**, **TSLA**, or **NVDA** and Friendly Ticker will instantly explain the trend, "
-    "risk level, and recent movement in simple, beginner-friendly language. No charts. No jargon."
+st.markdown(
+    """
+    <div style="padding: 1.5rem 1rem; background-color: #F3F4F6; border-radius: 1rem; margin-bottom: 1.5rem;">
+      <h1 style="margin-bottom: 0.25rem; font-size: 2rem;">📊 Friendly Ticker</h1>
+      <p style="margin: 0; font-size: 1.05rem; color: #4B5563;">
+        Understand any stock in plain English. Type a ticker and get a simple trend score,
+        risk level, and beginner-friendly explanation. No charts. No jargon.
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ---------- Session state ----------
@@ -266,5 +273,6 @@ if results:
         # Beginner summary
         st.markdown("### Beginner-Friendly Summary")
         st.write(beginner_summary(ticker, scores))
+
 
 
